@@ -1,0 +1,16 @@
+#!/bin/sh
+# Enforces a GitHub issue reference in every commit message (e.g. "Closes #42").
+# Activate with: git config core.hooksPath hooks
+# Backstop: .github/workflows/pr-title-check.yml (required CI check, catches anyone who skipped this)
+
+MSG_FILE="$1"
+FIRST_LINE=$(head -1 "$MSG_FILE")
+
+case "$FIRST_LINE" in
+  "Merge "*|"Revert "*) exit 0 ;;
+esac
+
+if ! grep -qE '#[0-9]+' "$MSG_FILE"; then
+  echo "commit-msg: no issue reference found — include #<number> (e.g. 'Closes #42')." >&2
+  exit 1
+fi

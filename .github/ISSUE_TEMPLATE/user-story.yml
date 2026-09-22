@@ -1,0 +1,140 @@
+name: User story
+description: A change that delivers observable value. Fields marked required are the Definition of Ready.
+title: "[Story]: "
+labels: ["user story"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The required fields below are the Definition of Ready. A story that cannot fill them
+        in is not ready to be picked up — that is the point of the form, not an obstacle to
+        work around.
+
+  - type: textarea
+    id: story
+    attributes:
+      label: Story
+      description: Who wants this, what they want, and why. The "so that" is what lets anyone judge a trade-off mid-implementation.
+      value: |
+        **As a** <role>
+        **I want** <capability>
+        **So that** <value>
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: |
+        Observable outcomes, not implementation steps. The bar: name the test that would fail
+        if this were broken. "Adds a FileValidator class" is a step; "an upload over the size
+        limit is rejected with 413 and a ProblemDetails body" is a criterion.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: proof
+    attributes:
+      label: How will we know it works?
+      description: The specific test, command, or measurement that demonstrates it. If nothing can demonstrate it, the story is not ready.
+      placeholder: "e.g. integration test in FileMutation.Api.Tests asserting the round trip"
+    validations:
+      required: true
+
+  - type: input
+    id: depends-on
+    attributes:
+      label: Depends on
+      description: Issue numbers that must land first. Write "none" if genuinely independent. Link these as blocked-by after the issue is created.
+      placeholder: "#12, #14 — or: none"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: Must fit one PR of ~400 LOC of code (markdown excluded). If it does not, split it before opening this issue.
+      options:
+        - S — under ~150 LOC
+        - M — ~150-400 LOC of code
+        - "L — over 400 LOC of code (STOP: split this first)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "priority: p0 — critical / blocking"
+        - "priority: p1 — high"
+        - "priority: p2 — normal"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexity
+      description: |
+        What the work demands of whoever picks it up — reasoning difficulty, NOT size and NOT
+        risk. A one-line change to a public repo is complexity 1 and high risk; those are
+        different axes. Drives model routing, see .claude/rules/complexity-routing.md.
+      options:
+        - "1 — mechanical, one correct answer, no judgment"
+        - "2 — routine, well-trodden pattern, shape known before starting"
+        - "3 — real problem-solving inside a known design"
+        - "4 — design leverage: constrains later work, expensive to reverse"
+        - "5 — hard, with failure modes that pass a casual read"
+    validations:
+      required: true
+
+  - type: input
+    id: serves
+    attributes:
+      label: Serves which PRD user story?
+      description: US-1, US-2, US-3 — or "none (enabling work)". Declaring "none" is fine; leaving it blank means nobody knows whether a requirement is covered.
+      placeholder: "US-2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: work-type
+    attributes:
+      label: Work type
+      description: For cost accounting.
+      options:
+        - "new — builds capability that did not exist"
+        - "maintenance — keeps existing behaviour working"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: wbso
+    attributes:
+      label: WBSO
+      description: |
+        Tick only if, **at the point this work starts**, there is genuine technical
+        uncertainty that needs systematic investigation to resolve — you do not know whether
+        the approach will work, and finding out requires experiment rather than lookup.
+
+        Difficulty is not the criterion; uncertainty is. Choosing between known libraries,
+        implementing a documented pattern, scaffolding, tests and docs are not candidates
+        however hard they are. This is a flag for review, not an eligibility ruling.
+      options:
+        - label: Suspected WBSO-eligible — flag for review by whoever handles the application
+          required: false
+
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: |
+        An unanswered question is acceptable only if a default is written down here AND being
+        wrong about it would not cause rework. Otherwise this story is not ready.
+      placeholder: "None. / OQ-1: ... — default taken: ..."
