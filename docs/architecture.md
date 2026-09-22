@@ -125,7 +125,6 @@ sequenceDiagram
             D-->>M: bytes written
             M-->>E: mutated content
             E-->>C: 200 + Content-Disposition, original filename
-            end
         end
     end
 ```
