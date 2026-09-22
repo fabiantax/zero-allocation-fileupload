@@ -31,9 +31,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileMutation.Benchmarks", "benchmarks\FileMutation.Benchmarks\FileMutation.Benchmarks.csproj", "{90E9F1BA-31B6-47E3-A097-FE58E22DEAE9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileMutation.Analyzers", "src\FileMutation.Analyzers\FileMutation.Analyzers.csproj", "{C566CBBF-318B-495A-841E-EBA7071F25AD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileMutation.Analyzers", "tools\FileMutation.Analyzers\FileMutation.Analyzers.csproj", "{C566CBBF-318B-495A-841E-EBA7071F25AD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileMutation.Analyzers.Tests", "tests\FileMutation.Analyzers.Tests\FileMutation.Analyzers.Tests.csproj", "{65EBF8E1-0D29-459B-AA0F-2613948F9C28}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileMutation.Analyzers.Tests", "tools\FileMutation.Analyzers.Tests\FileMutation.Analyzers.Tests.csproj", "{65EBF8E1-0D29-459B-AA0F-2613948F9C28}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
