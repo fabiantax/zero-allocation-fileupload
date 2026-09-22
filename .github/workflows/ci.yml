@@ -17,6 +17,70 @@ jobs:
       - run: dotnet build --configuration Release
       - run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
 
+      # Smoke test: prove the REAL host starts on an https address (#35).
+      #
+      # Root cause of the wildcard bind that killed the first attempt (run 35749154174):
+      # the step env was not a clean URL. Its actual value, visible in the failed run's
+      # env dump, was the single scalar "https://localhost:7080 --results-directory
+      # TestResults" — dotnet-test arguments pasted into the same value. Kestrel's
+      # BindingAddress cannot read a port out of that, so the entire suffix is taken as
+      # the *host*, the port falls back to the https default 443, and because that host
+      # is neither "localhost" nor an IP literal, AddressBinder does not resolve it via
+      # DNS — it falls back to ListenAnyIP(443). Binding [::]:443 as the unprivileged
+      # runner user then fails with EACCES (13) inside AnyIPListenOptions.BindAsync.
+      # Verified both ways in a Linux container: as root, this exact env value prints
+      # "Now listening on: https://[::]:443"; as uid 1000 it aborts with the identical
+      # SocketException(13) stack from the red run.
+      #
+      # --no-launch-profile is load-bearing: with launchSettings.json applied, the first
+      # profile's applicationUrl (http://localhost:5080) OVERRIDES ASPNETCORE_URLS, and
+      # the step would silently test plain http — removing the one regression this gate
+      # exists to catch (CreateSlimBuilder omits HTTPS wiring; removing
+      # UseKestrelHttpsConfiguration() makes this step fail with InvalidOperationException).
+      #
+      # The dev certificate must exist before startup or Kestrel aborts with
+      # "Unable to configure HTTPS endpoint". It is deliberately not trusted (--trust is
+      # unsupported on Linux); curl -k accepts the self-signed certificate instead.
+      - name: Smoke test the real host over HTTPS
+        shell: bash
+        env:
+          ASPNETCORE_URLS: https://localhost:7080
+        run: |
+          set -euo pipefail
+          dotnet dev-certs https
+
+          APP_LOG="$RUNNER_TEMP/smoke-host.log"
+          dotnet run --project src/FileMutation.Api --configuration Release --no-build --no-launch-profile >"$APP_LOG" 2>&1 &
+          APP_PID=$!
+          # Invoked indirectly via the EXIT trap below.
+          # shellcheck disable=SC2329
+          cleanup() {
+            kill "$APP_PID" 2>/dev/null || true
+            wait "$APP_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl -fsSk --max-time 2 https://localhost:7080/openapi/v1.json -o /dev/null; then
+              echo "Host served /openapi/v1.json over https (attempt $attempt)."
+              grep -E "Now listening on|Application started" "$APP_LOG" || true
+              exit 0
+            fi
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "::error::The API host exited during startup (attempt $attempt)."
+              APP_RC=0
+              wait "$APP_PID" || APP_RC=$?
+              echo "Host exit code: $APP_RC"
+              tail -n 40 "$APP_LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "::error::The API host never served https://localhost:7080/openapi/v1.json within 30s."
+          tail -n 40 "$APP_LOG"
+          exit 1
+
       # Merges the per-test-project Cobertura reports into one, then gates on BRANCH
       # coverage (never the line figure). Two deliberate scope rules:
       #   - **/obj/** keeps source-generated code (STJ metadata, OpenAPI comment support)
