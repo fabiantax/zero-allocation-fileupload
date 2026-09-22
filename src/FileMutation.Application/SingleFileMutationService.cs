@@ -23,7 +23,11 @@ public enum FileMutationFailureReason
     MutationFailed
 }
 
-/// <summary>The outcome of validating and mutating one file.</summary>
+/// <summary>
+/// The outcome of validating and mutating one file. An accepted result owns the pooled reader
+/// behind <see cref="Content"/>; <c>DisposeAsync</c> returns those pooled segments to the pool,
+/// so dispose accepted results after streaming them.
+/// </summary>
 public sealed class FileMutationResult : IAsyncDisposable
 {
     private readonly PipeReader? _mutatedContent;
@@ -81,7 +85,19 @@ public sealed class FileMutationResult : IAsyncDisposable
 }
 
 /// <summary>Validates and mutates one bounded file, independently of any transport.</summary>
-public sealed class SingleFileMutationService(IFileMutator fileMutator)
+public interface ISingleFileMutationService
+{
+    /// <summary>Reads, validates, and mutates one file, returning success or a per-file failure.</summary>
+    Task<FileMutationResult> MutateAsync(
+        Stream content,
+        string? declaredFileName,
+        string? declaredContentType,
+        long maxFileBytes,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>Validates and mutates one bounded file, independently of any transport.</summary>
+public sealed class SingleFileMutationService(IFileMutator fileMutator) : ISingleFileMutationService
 {
     /// <summary>Reads, validates, and mutates one file, returning success or a per-file failure.</summary>
     public async Task<FileMutationResult> MutateAsync(

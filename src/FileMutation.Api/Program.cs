@@ -48,12 +48,12 @@ builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 
 // --- Application services ---------------------------------------------------
 
+// Singleton: stateless infra leaves (clock, randomness, adapters) — all three ladder conditions hold.
+// Scoped: survives the next per-request dependency added (a DbContext would be captive in a
+// singleton). Ladder details: .claude/rules/dotnet-conventions.md.
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddFileMutationInfrastructure();
-
-// Scoped, not singleton: it is stateless today, but scoped survives the next per-request
-// dependency added (a DbContext would be captive in a singleton). See .claude/rules/dotnet-conventions.md.
-builder.Services.AddScoped<SingleFileMutationService>();
+builder.Services.AddScoped<ISingleFileMutationService, SingleFileMutationService>();
 
 // --- OpenAPI + JSON ---------------------------------------------------------
 
