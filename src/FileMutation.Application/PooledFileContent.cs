@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.IO.Pipelines;
+using FileMutation.Domain;
 
 namespace FileMutation.Application;
 
@@ -36,8 +37,6 @@ public sealed class BufferedFileContent : IAsyncDisposable
 /// <summary>Reads one bounded file stream into pooled memory, for later validation.</summary>
 public static class PooledFileContentReader
 {
-    private const int SegmentSize = 16 * 1024;
-
     /// <summary>Reads <paramref name="source"/> completely while enforcing the file byte limit.</summary>
     public static async Task<(BufferedFileContent? Content, FileMutationFailureReason? Failure)> ReadAsync(
         Stream source,
@@ -48,11 +47,12 @@ public static class PooledFileContentReader
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxFileBytes, 0);
 
         var pipe = new Pipe(new PipeOptions(
-            minimumSegmentSize: SegmentSize,
+            minimumSegmentSize: FileMutationConstants.SegmentSize,
             pauseWriterThreshold: maxFileBytes + 1,
             resumeWriterThreshold: maxFileBytes));
         var sourceReader = PipeReader.Create(
-            source, new StreamPipeReaderOptions(bufferSize: SegmentSize, leaveOpen: true));
+            source, new StreamPipeReaderOptions(
+                bufferSize: FileMutationConstants.SegmentSize, leaveOpen: true));
         var completed = false;
         long byteCount = 0;
 

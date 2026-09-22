@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using FileMutation.Api.Contracts;
 using FileMutation.Domain.Ports;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -14,6 +16,27 @@ namespace FileMutation.Api.Tests;
 public sealed class FileMutateEndpointTests(FileMutationApiFactory factory) : IClassFixture<FileMutationApiFactory>
 {
     private readonly HttpClient _client = CreateClient(factory);
+
+    [Fact]
+    public async Task OpenApi_file_field_matches_the_endpoint_parse_target()
+    {
+        using var response = await _client.GetAsync("/openapi/v1.json");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.NotNull(document);
+        var schema = document.RootElement
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty(nameof(MutateFileRequest));
+        var property = Assert.Single(schema.GetProperty("properties").EnumerateObject());
+        var requiredField = Assert.Single(
+            schema.GetProperty("required").EnumerateArray(),
+            value => value.GetString() == MutateFileRequest.FileFieldName);
+
+        Assert.Equal(MutateFileRequest.FileFieldName, property.Name);
+        Assert.Equal(MutateFileRequest.FileFieldName, requiredField.GetString());
+    }
 
     [Fact]
     public async Task Valid_text_upload_returns_mutated_content_and_original_file_name()

@@ -83,8 +83,6 @@ public sealed class FileMutationResult : IAsyncDisposable
 /// <summary>Validates and mutates one bounded file, independently of any transport.</summary>
 public sealed class SingleFileMutationService(IFileMutator fileMutator)
 {
-    private const int SegmentSize = 16 * 1024;
-
     /// <summary>Reads, validates, and mutates one file, returning success or a per-file failure.</summary>
     public async Task<FileMutationResult> MutateAsync(
         Stream content,
@@ -111,7 +109,7 @@ public sealed class SingleFileMutationService(IFileMutator fileMutator)
         }
 
         var output = new Pipe(new PipeOptions(
-            minimumSegmentSize: SegmentSize,
+            minimumSegmentSize: FileMutationConstants.SegmentSize,
             pauseWriterThreshold: long.MaxValue,
             resumeWriterThreshold: long.MaxValue - 1));
         FileMutationResult? result = null;
