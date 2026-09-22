@@ -96,7 +96,6 @@ sequenceDiagram
     else accepted for reading
         K->>E: forward request
 
-        rect rgb(245,245,245)
         note over E,A: PHASE 1: read and validate. No response written yet.
         loop each pooled pipe segment
             E->>E: buffer segment · count part bytes
@@ -104,7 +103,6 @@ sequenceDiagram
         end
         E->>A: check .txt, text/plain, decoded cleanly
         A-->>E: Result
-        end
 
         alt part exceeded the byte limit
             E-->>C: 413 ProblemDetails
@@ -113,7 +111,6 @@ sequenceDiagram
         else not an accepted format
             E-->>C: 415 ProblemDetails
         else accepted
-            rect rgb(245,245,245)
             note over E,D: PHASE 2: respond. Status is committed from here.
             E->>M: Mutate(buffered content) through IFileMutator
             M->>D: append into span: utcNow, randomSequence
