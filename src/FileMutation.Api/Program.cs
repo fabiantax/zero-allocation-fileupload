@@ -71,6 +71,10 @@ app.MapScalarApiReference();      // /scalar — the browser UI
 app.UseExceptionHandler();        // last-chance handler for unexpected faults
 app.MapFileMutateEndpoint();      // POST /files/mutate
 
+// The root and the habitual /swagger lead to the UI, so the first URL anyone types works.
+app.MapGet("/", () => Results.Redirect("/scalar/", permanent: false));
+app.MapGet("/swagger", () => Results.Redirect("/scalar/", permanent: false));
+
 await app.RunAsync();
 
 // Source-generated JSON metadata for ProblemDetails, so error bodies serialize without reflection
