@@ -27,8 +27,6 @@ internal sealed class UploadLimits
 /// </summary>
 internal static class FileMutateEndpoint
 {
-    private const string FileFieldName = "file";
-
     /// <summary>Maps <c>POST /files/mutate</c> and its OpenAPI response contract.</summary>
     internal static RouteHandlerBuilder MapFileMutateEndpoint(this IEndpointRouteBuilder endpoints)
     {
@@ -75,7 +73,9 @@ internal static class FileMutateEndpoint
 
                     if (++fileParts > 1)
                     {
-                        return Problem(StatusCodes.Status400BadRequest, $"Supply exactly one file part named '{FileFieldName}'.");
+                        return Problem(
+                            StatusCodes.Status400BadRequest,
+                            $"Supply exactly one file part named '{MutateFileRequest.FileFieldName}'.");
                     }
                     await DisposeResultAsync(mutationResult);
 
@@ -94,7 +94,9 @@ internal static class FileMutateEndpoint
 
             if (mutationResult is null)
             {
-                return Problem(StatusCodes.Status400BadRequest, $"Supply exactly one non-empty file part named '{FileFieldName}'.");
+                return Problem(
+                    StatusCodes.Status400BadRequest,
+                    $"Supply exactly one non-empty file part named '{MutateFileRequest.FileFieldName}'.");
             }
 
             if (!mutationResult.IsAccepted)
@@ -143,7 +145,8 @@ internal static class FileMutateEndpoint
     private static string DetailFor(FileMutationResult result) => result switch
     {
         { FailureReason: FileMutationFailureReason.TooLarge } => "The upload exceeds the configured size limit.",
-        { FailureReason: FileMutationFailureReason.Empty } => $"Supply exactly one non-empty file part named '{FileFieldName}'.",
+        { FailureReason: FileMutationFailureReason.Empty } =>
+            $"Supply exactly one non-empty file part named '{MutateFileRequest.FileFieldName}'.",
         { FailureReason: FileMutationFailureReason.Unreadable } => "The multipart request is malformed.",
         { FailureReason: FileMutationFailureReason.Rejected, AcceptanceReason: FileRejectionReason.InvalidFileName }
             => "The file name is missing or not a valid file name.",
@@ -174,7 +177,7 @@ internal static class FileMutateEndpoint
 
         if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition) ||
             !string.Equals(disposition.DispositionType.Value, "form-data", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(disposition.Name.Value, FileFieldName, StringComparison.Ordinal) ||
+            !string.Equals(disposition.Name.Value, MutateFileRequest.FileFieldName, StringComparison.Ordinal) ||
             string.IsNullOrWhiteSpace(disposition.FileNameStar.Value ?? disposition.FileName.Value))
         {
             return false;

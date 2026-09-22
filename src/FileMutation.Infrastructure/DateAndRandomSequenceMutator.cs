@@ -11,8 +11,6 @@ namespace FileMutation.Infrastructure;
 /// </summary>
 internal sealed class DateAndRandomSequenceMutator : IFileMutator
 {
-    private const int PipeSegmentSize = 16 * 1024;
-
     /// <summary>The stable number of random characters appended to each file.</summary>
     public const int RandomSequenceLength = 16;
 
@@ -47,14 +45,14 @@ internal sealed class DateAndRandomSequenceMutator : IFileMutator
             source,
             new StreamPipeReaderOptions(
                 pool: _memoryPool,
-                bufferSize: PipeSegmentSize,
-                minimumReadSize: PipeSegmentSize,
+                bufferSize: FileMutationConstants.SegmentSize,
+                minimumReadSize: FileMutationConstants.SegmentSize,
                 leaveOpen: true));
         var writer = PipeWriter.Create(
             destination,
             new StreamPipeWriterOptions(
                 pool: _memoryPool,
-                minimumBufferSize: PipeSegmentSize,
+                minimumBufferSize: FileMutationConstants.SegmentSize,
                 leaveOpen: true));
         try
         {
@@ -114,7 +112,7 @@ internal sealed class DateAndRandomSequenceMutator : IFileMutator
             var remaining = segment.Span;
             while (!remaining.IsEmpty)
             {
-                var bytesToCopy = Math.Min(remaining.Length, PipeSegmentSize);
+                var bytesToCopy = Math.Min(remaining.Length, FileMutationConstants.SegmentSize);
                 remaining[..bytesToCopy].CopyTo(writer.GetSpan(bytesToCopy));
                 writer.Advance(bytesToCopy);
                 remaining = remaining[bytesToCopy..];

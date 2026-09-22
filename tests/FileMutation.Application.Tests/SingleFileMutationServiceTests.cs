@@ -1,5 +1,6 @@
 using System.Text;
 using FileMutation.Application;
+using FileMutation.Domain;
 using FileMutation.Domain.Ports;
 using Xunit;
 
@@ -7,6 +8,18 @@ namespace FileMutation.Application.Tests;
 
 public sealed class SingleFileMutationServiceTests
 {
+    [Fact]
+    public void Segment_size_stays_below_the_large_object_heap_threshold()
+    {
+        const int largeObjectHeapThresholdBytes = 85_000;
+
+        // Pooled segments must stay below the ~85,000-byte Large Object Heap threshold so the
+        // allocation strategy in ADR-0005 keeps renting recyclable segments rather than allocating LOH arrays.
+        Assert.True(
+            FileMutationConstants.SegmentSize < largeObjectHeapThresholdBytes,
+            $"Segment size {FileMutationConstants.SegmentSize} must stay below {largeObjectHeapThresholdBytes} bytes.");
+    }
+
     [Fact]
     public async Task One_caller_can_mutate_three_files_with_independent_results()
     {
