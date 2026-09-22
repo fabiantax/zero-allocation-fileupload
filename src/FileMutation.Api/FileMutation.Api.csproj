@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- PublishAot is deliberately absent, here and in CI. It turns the trim/AOT analyzers on
+         for every build and drags the ILCompiler pack into restore: a cold build took five
+         minutes. AOT is proven to work (ADR-0001) and parked until the inner loop matters less.
+         To re-enable: add <PublishAot>true</PublishAot> and a publish step in CI. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.17.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FileMutation.Application\FileMutation.Application.csproj" />
+  </ItemGroup>
+</Project>

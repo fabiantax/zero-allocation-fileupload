@@ -90,7 +90,7 @@ Acceptance criteria:
 | NFR-6 | Public members carry XML documentation; ADRs are linked from XML docs where a decision explains the code |
 | NFR-7 | DI container validates on build (`ValidateOnBuild`, `ValidateScopes`) so lifetime mistakes fail at startup, not in production |
 | NFR-8 | Code is testable by construction: time (`TimeProvider`) and randomness injected, mutation logic pure and host-independent |
-| NFR-9 | Publishes with Native AOT (`PublishAot`): no JIT warmup, fast cold start, low resident memory per instance — and the trim-safe discipline it forces is the same one the allocation goal needs. Requires built-in `Microsoft.AspNetCore.OpenApi` + Scalar (not Swashbuckle) and source-generated JSON (not reflection-based, not Newtonsoft). Library projects set `IsAotCompatible` to enable the AOT/trim analyzers; because those emit *warnings*, CI must promote the relevant IL/RDG diagnostics to errors for them to gate anything. Publishing and running the native binary is the actual proof |
+| ~~NFR-9~~ **(parked)** | Proven feasible and deliberately not enabled — see ADR-0001. Setting `PublishAot` turns the trim/AOT analyzers on for every build and pulls ILCompiler into restore, costing a five-minute cold build; a fast inner loop is worth more right now. Originally: publishes with Native AOT (`PublishAot`): no JIT warmup, fast cold start, low resident memory per instance — and the trim-safe discipline it forces is the same one the allocation goal needs. Requires built-in `Microsoft.AspNetCore.OpenApi` + Scalar (not Swashbuckle) and source-generated JSON (not reflection-based, not Newtonsoft). Library projects set `IsAotCompatible` to enable the AOT/trim analyzers; because those emit *warnings*, CI must promote the relevant IL/RDG diagnostics to errors for them to gate anything. Publishing and running the native binary is the actual proof |
 
 ## Success Criteria
 
@@ -98,7 +98,7 @@ Acceptance criteria:
 - [ ] A file uploaded through the UI returns mutated, under its original name, in a single round trip
 - [ ] CI is green: build, tests, ≥80% branch coverage, architecture rules
 - [ ] BenchmarkDotNet report shows measured per-request allocation, recorded in the repo
-- [ ] `dotnet publish -p:PublishAot=true` succeeds; startup time and binary size recorded alongside the allocation numbers
+- [x] `dotnet publish -p:PublishAot=true` succeeds; startup time and binary size recorded (ADR-0001). **AOT then parked** — proven, not enabled, to keep builds fast
 - [ ] Both implementation variants (simple service, CQRS) exist and an ADR states which ships and why
 - [ ] Every PR under ~400 LOC of code and traceable to an issue
 
