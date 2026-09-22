@@ -29,7 +29,6 @@ graph TB
 
     subgraph app["FileMutation.Application — business rules, no HTTP types"]
         ACC["FileAcceptance<br/>is this file acceptable?"]
-        UC["MutateFileUseCase"]
     end
 
     subgraph dom["FileMutation.Domain — policy, no I/O, no framework refs"]
@@ -50,10 +49,9 @@ graph TB
     SYS --> EP
     EP --> OAPI
     EP --> ACC
-    EP --> UC
+    EP --> P1
     EP -.-> PD
     ACC --> FN
-    UC --> P1
 
     MUT -. implements .-> P1
     RNG -. implements .-> P3
@@ -91,7 +89,6 @@ sequenceDiagram
     participant K as Kestrel request limits
     participant E as FileMutateEndpoint
     participant A as FileAcceptance
-    participant U as MutateFileUseCase
     participant M as DateAndRandomSequenceMutator
     participant D as Domain mutation policy
 
@@ -121,8 +118,7 @@ sequenceDiagram
         else accepted
             rect rgb(245,245,245)
             note over E,D: PHASE 2 — respond. Status is committed from here.
-            E->>U: Mutate(buffered content, FileName)
-            U->>M: through IFileMutator
+            E->>M: Mutate(buffered content) through IFileMutator
             M->>D: append into span — utcNow, randomSequence
             D-->>M: bytes written
             M-->>E: mutated content
@@ -136,7 +132,9 @@ Every rejection is produced by the endpoint from a **result**, via `TypedResults
 throwing. `IExceptionHandler` exists for *unexpected* exceptions only, and it too can only write
 a response while one has not yet started.
 
-`Content-Length` is known once phase 1 finishes, so the download is not chunked.
+The mutated body is streamed to the client as the mutator produces it, so the response is
+chunked: how many bytes the suffix adds is the mutator's business, not the endpoint's. Buffering
+the mutated copy purely to set `Content-Length` would double peak memory for a header.
 
 ## 3. State machine — request lifecycle
 

@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FileMutation.Application\FileMutation.Application.csproj" />
+    <ProjectReference Include="..\FileMutation.Infrastructure\FileMutation.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
