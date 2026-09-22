@@ -17,6 +17,11 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)FileMutation.Analyzers/FileMutation.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all"
+                      Condition="'$(MSBuildProjectName)' != 'FileMutation.Analyzers'" />
   </ItemGroup>
 
 </Project>

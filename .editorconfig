@@ -25,6 +25,10 @@ csharp_style_namespace_declarations = file_scoped:suggestion
 # See issue #32. Applies to src/ only; the package is referenced from src/Directory.Build.props.
 [src/**.cs]
 
+# FM001 rejects folded literals that duplicate a named constant in the same project.
+# The local analyzer is referenced from src/Directory.Build.props; exceptions need a remover issue.
+dotnet_diagnostic.FM001.severity = error
+
 # S3776 cognitive complexity. The one that matters: it measures nesting and branching, not
 # length. A long flat sequence of steps is readable; a short deeply nested one is not.
 # Sonar's default of 15 is kept — it is the value their own research settled on.
