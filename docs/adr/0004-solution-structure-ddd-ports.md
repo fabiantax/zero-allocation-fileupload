@@ -16,7 +16,7 @@ It also has no persistence requirement. The [decision log](../decision-log.md#23
 records why an uploaded-file aggregate would be ceremonial, while
 [section 2.9](../decision-log.md#29-structure-for-multiple-consuming-domains) records HTTP/OpenAPI
 as the boundary for other domains. The independent
-[review](../reviews/2026-09-22-independent-design-review.md) identified the planned repository and
+design review of 2026-09-22 identified the planned repository and
 registry as speculative. PR #18 (`0f6d7af`) removed storage; PR #19 (`4516930`) removed dispatch;
 PR #24 (`4a59553`) deleted `IMutateFileUseCase` because nothing implemented or called it.
 

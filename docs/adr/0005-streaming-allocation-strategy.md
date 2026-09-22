@@ -8,7 +8,7 @@
 
 UTF-8 validity can be known only after the entire upload has been read, while an HTTP 415 can be
 chosen only before response bytes commit the status line. The independent
-[design review](../reviews/2026-09-22-independent-design-review.md) found the original interleaved
+design review of 2026-09-22 found the original interleaved
 read/write design could produce only a truncated 200 on a late validation failure. PR #19
 (`4516930`) therefore established a two-phase order and corrected the allocation claim. PR #23
 (`15c711c`) implemented pooled 16 KiB pipeline segments; PR #24 (`4a59553`) implemented the
