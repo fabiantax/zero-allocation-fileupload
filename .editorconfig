@@ -30,8 +30,11 @@ csharp_style_namespace_declarations = file_scoped:suggestion
 # Sonar's default of 15 is kept — it is the value their own research settled on.
 dotnet_diagnostic.S3776.severity = error
 
-# S138 method length. Raised from Sonar's default of 80 to 60: this codebase has no UI event
-# handlers or generated code, so a 60-line method here is already doing too much.
+# S138 method length, at Sonar's default of 80. A correction: an earlier revision of this file
+# claimed the threshold was lowered to 60, but only the severity line ever took effect —
+# SonarAnalyzer enforces 80. Lowering it needs a rule-parameter mechanism this setup does not
+# have, so the claim is removed rather than kept untrue. S3776 (cognitive complexity) is the
+# rule that actually polices shape; S138 is the backstop.
 dotnet_diagnostic.S138.severity = error
 
 # S1541 cyclomatic complexity, kept at the default of 10.
