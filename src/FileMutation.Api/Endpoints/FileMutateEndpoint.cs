@@ -23,8 +23,9 @@ public sealed class UploadLimits
 
 /// <summary>
 /// Accepts a text file, appends the UTC date and a random sequence, and returns it under its
-/// original name. See <c>docs/architecture.md</c> for the two-phase ordering this endpoint exists
-/// to guarantee.
+/// original name. See
+/// <see href="../../../docs/adr/0005-streaming-allocation-strategy.md">ADR 0005</see> for the
+/// two-phase ordering this endpoint exists to guarantee.
 /// </summary>
 public static class FileMutateEndpoint
 {

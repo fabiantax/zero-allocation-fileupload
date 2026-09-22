@@ -1,0 +1,12 @@
+<Project>
+
+  <!-- Applies to src/ only. Test and benchmark projects deliberately inherit none of this:
+       requiring XML comments on every test method is noise, not documentation. -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591 = missing XML comment on a public member. An error, not a warning, so the
+         documentation cannot silently regress once written. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
