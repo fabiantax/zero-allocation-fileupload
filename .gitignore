@@ -439,5 +439,6 @@ CLAUDE.local.md
 # Client-supplied assignment text — never committed (see CLAUDE.md)
 ASSIGNMENT.md
 
-# Local dev convenience, not part of the deliverable — references /tmp/claude job logs
-scripts/status.sh
+# Session-local convenience scripts: tooling for *running* the work, never part of the
+# deliverable. Machine-specific paths live here and must not reach a public repo.
+.local/
