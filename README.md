@@ -1,8 +1,15 @@
 # File Mutation API
 
+[![CI](https://github.com/fabiantax/zero-allocation-fileupload/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiantax/zero-allocation-fileupload/actions/workflows/ci.yml)
+[![Branch coverage ≥80%, gated](https://img.shields.io/badge/branch%20coverage-%E2%89%A580%25%20gated-green)](https://github.com/fabiantax/zero-allocation-fileupload/blob/main/.github/workflows/ci.yml)
+[![.NET 10 LTS](https://img.shields.io/badge/.NET-10%20LTS-512BD4)](https://dotnet.microsoft.com)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 A .NET 10 REST API that accepts one UTF-8 `.txt` file, appends a newline followed by the
 current UTC date and a 16-character random sequence, and returns the result as a download under
 the submitted filename.
+
+[Run it](#run-locally) · [Test and verify](#test-and-verify) · [Assumptions](#assumptions-and-open-questions) · [Design record](#design-record)
 
 ## Why it is built this way
 
