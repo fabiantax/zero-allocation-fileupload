@@ -70,6 +70,13 @@ a date to them produces structurally invalid output that still looks like succes
 
 Nothing is persisted. Upload, mutate, return; the bytes go to the response and are then gone.
 
+## Reproducing the benchmarks
+
+Run `dotnet run -c Release --project benchmarks/FileMutation.Benchmarks` from the repository
+root. BenchmarkDotNet runs the benchmarks in an optimised child process and writes its full
+reports to `BenchmarkDotNet.Artifacts/`; the measured allocation summary is recorded in
+[`docs/benchmarks/allocation-results.md`](docs/benchmarks/allocation-results.md).
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
