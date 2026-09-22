@@ -94,3 +94,47 @@ rate limiting, queue ingestion, Azure Blob storage, file query/delete endpoints,
 handling, Gherkin tests. Each was decided deliberately; see the PRD's out-of-scope table.
 
 If a task seems to need one of these, stop and ask — do not implement it.
+
+## Unwired code: find the cause before choosing the fix
+
+**Problem**: `IMutateFileUseCase` was public with no implementation and no caller, so #24 deleted it
+as dead code. The real reason it was unwired was that the endpoint had swallowed the job it should
+have delegated. #31 now recreates it. The deletion removed the symptom and left the cause.
+
+The same check on `src/FileMutation.Api/Contracts/` found two unused types with opposite answers:
+`MutateFileRequest` is unwired because the endpoint declares `.Accepts<IFormFile>(...)` instead of
+it, so the OpenAPI document under-describes the form — that one should be **wired**.
+`MutateFileResponse` has a `Stream` property and can never be an OpenAPI schema — that one should
+be **deleted**. "Remove unused code" would have been right once out of three times.
+
+**Rule**: when a type is unused, write down *why* before deciding. There are three causes and they
+have different fixes:
+
+| Cause | Fix |
+|---|---|
+| The caller does the work inline that this type should own | Wire it |
+| It was written for a shape the code does not actually have | Delete it |
+| It is a genuine public API for another assembly | Leave it, and say so in a comment |
+
+No analyzer can do this for you. SonarAnalyzer and `IDE0051` flag unused **private** members only;
+a public type may be consumed from another assembly, so they stay silent on exactly the cases above.
+Branch coverage plus an architecture test asserting every port has an implementation and a DI
+registration is what catches them here.
+
+## No InternalsVisibleTo
+
+**Problem**: making Infrastructure adapters `internal` so the compiler enforces "the Api depends on
+the port, not the adapter" appears to require opening them to the test project.
+
+**Rule**: it does not, and `InternalsVisibleTo` is not the answer. Resolve the adapter through the
+public DI extension instead:
+
+```csharp
+var provider = new ServiceCollection().AddFileMutationInfrastructure().BuildServiceProvider();
+var mutator = provider.GetRequiredService<IFileMutator>();
+```
+
+This is better than the `InternalsVisibleTo` version rather than a workaround for it: the test
+exercises the real registration, so a missing or wrong DI entry fails a test instead of passing one.
+If a test cannot be written this way, it is coupled to the adapter rather than the port — fix that,
+do not widen the assembly.
