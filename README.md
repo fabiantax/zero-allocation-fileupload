@@ -19,7 +19,7 @@ pooled memory per request: 784 B per operation at 1 KB and 256 KB, 792 B at 10 M
 sizes, though at 1 KB this path is 2.58× slower than the naive path. The full measurements are
 recorded in [the allocation benchmark results](docs/benchmarks/allocation-results.md).
 
-The operation is deliberately transient: upload, validate, mutate, return. Nothing is written to
+The operation is transient: upload, validate, mutate, return. Nothing is written to
 disk or a database, and there is no storage port. Validation completes before the response starts,
 so an invalid final UTF-8 byte can still produce a 415 instead of a truncated 200. The successful
 response is then streamed with chunked transfer encoding.
@@ -128,7 +128,7 @@ reports to `BenchmarkDotNet.Artifacts/`; the measured allocation summary is reco
 ## Assumptions and open questions
 
 The source ticket leaves several details unspecified. The defaults below make the resulting
-product decisions visible so they can be changed deliberately rather than discovered as accidental
+product decisions visible so they can be changed rather than discovered as accidental
 behavior.
 
 ### Defaults taken
@@ -201,8 +201,8 @@ random sequence, and return it. The
 each proposed extra back to a requirement and found none for a stored-file lifecycle, regulated
 audit, production access control, traffic management, or alternate ingestion channel. The
 independent design review of 2026-09-22 then found that the planned repository, registry, and
-capability seams were extensions for requirements already declared out of scope. PRs #18 and #19
-(`0f6d7af`, `4516930`) removed them before implementation.
+capability seams were extensions for requirements already declared out of scope. They were removed
+before implementation; the [decision log](docs/decision-log.md) records the corrections.
 
 The detailed exclusions remain in the PRD; this section records the rule used to draw the line.
 

@@ -1,0 +1,142 @@
+#!/bin/sh
+# Measure the prose limits recorded in issue #53. The three scoped files enforce
+# both their count limits and the one-em-dash-per-300-words density goal.
+set -eu
+
+allowlist_file="scripts/prose-scan-allowlist"
+max_allowlist_entries=10
+deliberately_limit=2
+deliberately_total=0
+failed=0
+
+if [ ! -f "$allowlist_file" ]; then
+  echo "error: missing $allowlist_file" >&2
+  exit 1
+fi
+
+allowlist_entries=0
+while IFS='|' read -r entry_path entry_metric entry_reason; do
+  case "$entry_path" in
+    ''|'#'*) continue ;;
+  esac
+
+  allowlist_entries=$((allowlist_entries + 1))
+  if [ -z "$entry_metric" ] || [ -z "$entry_reason" ]; then
+    echo "error: invalid allowlist entry for $entry_path" >&2
+    failed=1
+    continue
+  fi
+
+  case "$entry_metric" in
+    em-dash|deliberately|citation) ;;
+    *)
+      echo "error: unknown allowlist metric '$entry_metric' for $entry_path" >&2
+      failed=1
+      ;;
+  esac
+done < "$allowlist_file"
+
+if [ "$allowlist_entries" -gt "$max_allowlist_entries" ]; then
+  echo "error: $allowlist_entries allowlist entries exceed the $max_allowlist_entries-entry review limit" >&2
+  failed=1
+fi
+
+is_allowed() {
+  requested_path=$1
+  requested_metric=$2
+
+  while IFS='|' read -r entry_path entry_metric entry_reason; do
+    case "$entry_path" in
+      ''|'#'*) continue ;;
+    esac
+
+    if [ "$entry_path" = "$requested_path" ] && [ "$entry_metric" = "$requested_metric" ]; then
+      return 0
+    fi
+  done < "$allowlist_file"
+
+  return 1
+}
+
+count_em_dashes() {
+  awk '{ count += gsub(/—/, "") } END { print count + 0 }' "$1"
+}
+
+count_deliberately() {
+  awk '
+    {
+      line = tolower($0)
+      gsub(/[^[:alnum:]_]/, " ", line)
+      words = split(line, tokens, " ")
+      for (word_index = 1; word_index <= words; word_index++) {
+        if (tokens[word_index] == "deliberately") {
+          count++
+        }
+      }
+    }
+    END { print count + 0 }
+  ' "$1"
+}
+
+count_citations() {
+  awk '{ count += gsub(/#[[:digit:]]+/, "") } END { print count + 0 }' "$1"
+}
+
+printf '%-56s %7s %9s %10s %12s %11s\n' \
+  "file" "words" "em-dashes" "per 300" "deliberately" "#NN cites"
+
+scan_files=$(printf '%s\n' README.md; find docs -type f -name '*.md' -print | sort)
+for file in $scan_files; do
+  words=$(wc -w < "$file" | tr -d ' ')
+  em_dashes=$(count_em_dashes "$file")
+  deliberately=$(count_deliberately "$file")
+  citations=$(count_citations "$file")
+  density=$(awk -v count="$em_dashes" -v words="$words" 'BEGIN {
+    if (words == 0) {
+      print "0.00"
+    } else {
+      printf "%.2f", 300 * count / words
+    }
+  }')
+
+  printf '%-56s %7s %9s %10s %12s %11s\n' \
+    "$file" "$words" "$em_dashes" "$density" "$deliberately" "$citations"
+
+  case "$file" in
+    docs/architecture.md) em_dash_limit=5 ;;
+    docs/adr/0002-cqrs-mediator-choice.md) em_dash_limit=3 ;;
+    docs/adr/0005-streaming-allocation-strategy.md) em_dash_limit=2 ;;
+    *) em_dash_limit='' ;;
+  esac
+
+  if [ -n "$em_dash_limit" ] && [ "$em_dashes" -gt "$em_dash_limit" ] && ! is_allowed "$file" em-dash; then
+    echo "error: $file has $em_dashes em dashes; limit is $em_dash_limit" >&2
+    failed=1
+  fi
+
+  if [ -n "$em_dash_limit" ] && [ $((300 * em_dashes)) -gt "$words" ] && ! is_allowed "$file" em-dash; then
+    echo "error: $file exceeds the one-em-dash-per-300-words density limit" >&2
+    failed=1
+  fi
+
+  if is_allowed "$file" deliberately; then
+    echo "note: allowlisted deliberately count in $file" >&2
+  else
+    deliberately_total=$((deliberately_total + deliberately))
+  fi
+
+  if [ "$file" != "docs/decision-log.md" ] && [ "$citations" -gt 0 ] && ! is_allowed "$file" citation; then
+    echo "error: $file has $citations #NN citations outside docs/decision-log.md" >&2
+    failed=1
+  fi
+done
+
+printf 'Total deliberately count (excluding allowlisted files): %s; limit: %s\n' \
+  "$deliberately_total" "$deliberately_limit"
+
+if [ "$deliberately_total" -gt "$deliberately_limit" ]; then
+  echo "error: deliberately occurs $deliberately_total times; repo-wide limit is $deliberately_limit" >&2
+  failed=1
+fi
+
+exit "$failed"

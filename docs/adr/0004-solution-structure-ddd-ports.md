@@ -12,13 +12,11 @@ HTTP-independent file acceptance decision. Infrastructure implements time/random
 Api parses multipart input, maps errors, composes dependencies, and writes the response.
 
 The operation has no entity identity, state transition, or invariant spanning an object graph.
-It also has no persistence requirement. The [decision log](../decision-log.md#23-no-aggregate-root)
-records why an uploaded-file aggregate would be ceremonial, while
-[section 2.9](../decision-log.md#29-structure-for-multiple-consuming-domains) records HTTP/OpenAPI
-as the boundary for other domains. The independent
-design review of 2026-09-22 identified the planned repository and
-registry as speculative. PR #18 (`0f6d7af`) removed storage; PR #19 (`4516930`) removed dispatch;
-PR #24 (`4a59553`) deleted `IMutateFileUseCase` because nothing implemented or called it.
+It also has no persistence requirement. The [decision log](../decision-log.md) records why an
+uploaded-file aggregate would be ceremonial and why HTTP/OpenAPI is the boundary for other domains.
+The independent design review of 2026-09-22 identified the planned repository and registry as
+speculative. Storage and dispatch were removed, and `IMutateFileUseCase` was deleted because
+nothing implemented or called it.
 
 ## Decision
 
