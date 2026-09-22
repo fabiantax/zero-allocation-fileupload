@@ -138,3 +138,34 @@ This is better than the `InternalsVisibleTo` version rather than a workaround fo
 exercises the real registration, so a missing or wrong DI entry fails a test instead of passing one.
 If a test cannot be written this way, it is coupled to the adapter rather than the port — fix that,
 do not widen the assembly.
+
+## Service lifetimes: scoped default, singleton by evidence
+
+**Problem**: `SingleFileMutationService` was registered `AddSingleton` because it was stateless —
+zero instance fields, per-call state on the disposed result. "Stateless today" is a promise about
+the future, not an invariant anything enforces. The next dependency a service like this gains is
+usually per-request (a DbContext, a unit of work), and then: a scoped dependency inside a
+singleton is a **captive dependency** — the per-request object is pinned for app lifetime, with
+stale tracked entities, connection-pool starvation, and thread races. Our `ValidateScopes` +
+`ValidateOnBuild` make that a startup exception rather than silent corruption, so it fails loudly
+— but the fix is still a lifetime rewrite of every consumer (#56 moved the service to scoped for
+exactly this reason).
+
+**Rule — the ladder, default first:**
+
+| Lifetime | When |
+|---|---|
+| **Scoped** | The default for any service consumed by request handling. Survives the next dependency added. Cost is one small object per request — never a reason to deviate for anything that touches a request. |
+| **Singleton** | Only when all three hold: (1) no mutable instance state, or state that is genuinely immutable and thread-safe; (2) every dependency is itself singleton; (3) it is an infrastructural leaf — clock, randomness, connection factory, cache. Registering singleton is a *documented claim*; the current adapters (`DateAndRandomSequenceMutator`, `CryptoRandomSequenceGenerator`, `TimeProvider.System`) meet it. |
+| **Transient** | Stateful per use even within one request (a parser holding position), or a cheap stateless utility where sharing would couple callers. |
+
+**The cross-lifetime invariant — a consumer must never outlive a dependency:**
+- singleton → scoped: **fails loudly** at startup under `ValidateScopes`. Correct, but you still rewrite.
+- singleton → transient: **fails silently** — `ValidateScopes` does not cover it. The transient is
+  effectively pinned as singleton inside its consumer, sharing whatever state it was meant to
+  reset per use. Grep registrations for this shape; nothing else catches it.
+- scoped → transient: fine. transient → anything: fine.
+
+**Pre-mortem for the next PR that adds a registration:** name the lifetime in the PR description
+and why it is on its ladder rung. "It's stateless" is the start of the singleton argument, not
+the end — the other two conditions must also be written down.
