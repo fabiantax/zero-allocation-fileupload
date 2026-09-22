@@ -142,15 +142,58 @@ behavior.
 | Personal or regulated data | None assumed; no compliance or immutable-audit subsystem is included |
 | Evaluation access | No authentication in the trial; a production authentication model needs an explicit decision |
 
-The accepted-format choice is recorded in
-[ADR 0009](docs/adr/0009-accepted-formats-and-mutator-dispatch.md), and the precise allocation
-claim is in [ADR 0005](docs/adr/0005-streaming-allocation-strategy.md).
+The precise allocation claim is in
+[ADR 0005](docs/adr/0005-streaming-allocation-strategy.md).
+
+### Accepted format and dispatch boundary
+
+The ticket says: *"Allow users to upload a text file"* and *"Add data like the current date and
+a random character sequence to the file's content."*
+
+**"a text file" is not a specification.** Many things decode as text. `.json`, `.csv` and `.xml`
+all decode cleanly as UTF-8, so a validation rule of "does it decode?" accepts them — and
+appending a date to a JSON document produces structurally invalid JSON while every check
+reports success. A UTF-16 file also decodes, but our appended suffix is UTF-8 bytes, so
+appending to it produces mojibake. Both are silent corruption, not loud failure.
+
+**"data *like* the current date and a random character sequence"** — "like" means *such as*.
+The mandatory requirement is "add data to the file's content"; the date and the sequence are
+the ticket's own examples of what that data could be.
+
+The product decision is therefore to accept exactly one format: `.txt`, declared `text/plain`,
+decodable as UTF-8 (BOM optional). All three checks must pass. Anything else is rejected with
+415, including files that decode perfectly well. The service implements exactly the two named
+examples — the current UTC date and a random character sequence — through a `MutationContext`,
+and widening the accepted set is a product decision rather than an implementation detail.
+
+**No registry, and no capability enum.** Both were dropped after review. With a single accepted
+format the registry restated the acceptance rule in a second place, and it pushed
+filename/content-type — HTTP-shaped metadata — into a domain port. `MutationCapability` was
+worse: self-reported metadata that nothing in the type system enforced, so an adapter could
+simply declare `Streaming` and buffer anyway. A claim verified by nothing is not a safeguard.
+Dispatch goes in when a second format actually exists, and if that format needs a different
+execution model it gets its own contract rather than an enum.
+
+The planned `FileFormat` value object was dropped for the same reason: with one accepted format,
+it would merely restate the acceptance rule as a second domain representation of
+filename/content-type metadata. The earlier `IFileFormatMutator` alternative had the same defect
+— it took the same inputs and returned the same outputs as `IFileMutator`, differing only in
+name.
+
+| Alternative | Why not |
+|---|---|
+| Accept anything that decodes as text | Accepts `.json`/`.csv` and corrupts them while reporting success |
+| Accept any byte stream, append blindly | Corrupts UTF-16 silently; contradicts FR-6 |
+| BOM-aware suffix encoder (UTF-8/16 both accepted) | More correct across more inputs, but adds an encoder seam and branches for input the ticket never asked for — and UTF-16 without a BOM stays undetectable anyway |
+| A registry resolving filename + content-type to a mutator | Restates the acceptance rule in a second place and pushes HTTP-shaped metadata into a domain port, for a single format. Added when a second one exists |
+| Stream the response while validating | Cannot return 415 on a late failure — the status is already committed. This was the original design and it was wrong |
+| Build the `.docx` adapter too | Breaks NFR-1/NFR-3/NFR-9, exceeds the ~400 LOC PR limit, and mutates a non-text file the ticket never asked for |
 
 ### Scope boundary and deliberate exclusions
 
 The ticket asks for one synchronous transformation: receive a text file, append a UTC date and a
 random sequence, and return it. The
-[decision log](docs/decision-log.md#15-everything-else-that-was-deliberately-not-built) traced
+[decision log](docs/decision-log.md) traced
 each proposed extra back to a requirement and found none for a stored-file lifecycle, regulated
 audit, production access control, traffic management, or alternate ingestion channel. The
 independent design review of 2026-09-22 then found that the planned repository, registry, and
@@ -170,7 +213,7 @@ demonstrably correct.
 | Compliance and data-governance subsystems | Neither a regulated context nor personal data was stated |
 | Authentication, rate limiting, queue ingestion, and distributed telemetry | The evaluation ticket supplies no production topology, threat model, tenant model, or operational target from which to design them |
 | A BDD toolchain | Ordinary unit, integration, and architecture tests express this small behavior directly |
-| Other encodings and structured or container formats | They change the transformation semantics, not merely the plumbing; [ADR 0009](docs/adr/0009-accepted-formats-and-mutator-dispatch.md) records the narrow accepted format |
+| Other encodings and structured or container formats | They change the transformation semantics, not merely the plumbing; the [accepted-format boundary](#accepted-format-and-dispatch-boundary) records the narrow accepted format |
 
 Tests, architecture checks, allocation measurements, ADRs, and the browser OpenAPI UI remain in
 scope because the assignment explicitly judges approach and asks for an interactive API surface.
@@ -211,13 +254,12 @@ adding a port; see [ADR 0008](docs/adr/0008-persistence-deferral.md).
 | Decisions and corrections as the design evolved | [Decision log](docs/decision-log.md) |
 | System structure and request flow | [Architecture](docs/architecture.md) |
 | Native AOT: proven, then parked | [ADR 0001](docs/adr/0001-native-aot.md) |
-| Scope and deliberate exclusions | [ADR 0003](docs/adr/0003-scope-and-out-of-scope.md) |
+| Scope, deliberate exclusions, and accepted formats | [Assumptions and open questions](#assumptions-and-open-questions) |
 | Four-project structure, ports, and no aggregate root | [ADR 0004](docs/adr/0004-solution-structure-ddd-ports.md) |
 | Streaming, buffering, and allocation claim | [ADR 0005](docs/adr/0005-streaming-allocation-strategy.md) |
-| Built-in OpenAPI plus Scalar | [ADR 0006](docs/adr/0006-openapi-scalar.md) |
+| Built-in OpenAPI plus Scalar | [Decision log](docs/decision-log.md#an-openapi-ui-without-swashbuckle) |
 | Test, architecture, coverage, and benchmark boundaries | [ADR 0007](docs/adr/0007-testing-strategy.md) |
 | No persistence and no repository port | [ADR 0008](docs/adr/0008-persistence-deferral.md) |
-| Accepted format and the deleted dispatch abstractions | [ADR 0009](docs/adr/0009-accepted-formats-and-mutator-dispatch.md) |
 
 An independent review on 2026-09-22 caught the two-phase ordering defect
 before implementation; its adopted finding is recorded in ADR 0005.

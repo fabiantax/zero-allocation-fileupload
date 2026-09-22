@@ -6,7 +6,7 @@ namespace FileMutation.Api.Contracts;
 
 /// <summary>
 /// Multipart request containing the text file to mutate.
-/// See <see href="../../../docs/adr/0009-accepted-formats-and-mutator-dispatch.md">ADR 0009</see>.
+/// See <see href="../../../README.md#accepted-format-and-dispatch-boundary">the accepted-format boundary</see>.
 /// </summary>
 public sealed class MutateFileRequest
 {
