@@ -57,14 +57,39 @@ reporting success is exactly where a silent wrong answer enters.
 genuinely novel algorithms — neither of which this epic contains. Nothing here routes to it,
 and no task should be labelled to reach for it.
 
-**Fable is not used in this project.** It is reserved for major architectural decisions and
-genuinely novel algorithms — neither of which this epic contains. Nothing here routes to it,
-and no task should be labelled to reach for it.
-
 If a task in this project appears to *need* Fable, treat that as a signal about the **story,
 not the model**: it has been scoped too broadly, an unstated decision is buried inside it, or
 it is missing context an implementer needs. Split it or clarify it rather than escalating
 past Opus.
+
+## Implementation runs on OpenAI models
+
+Claude's weekly quota is the binding constraint, so **implementation is delegated to Codex**
+and Claude keeps orchestration: choosing the task, reviewing what comes back, git, PRs and
+traceability. Claude writing the code and Claude reviewing the code was never the stronger
+arrangement anyway — a different model has different blind spots.
+
+| Complexity | Codex model | Claude equivalent |
+|---|---|---|
+| 1 | `gpt-5.6-luna` | Haiku — fast, easy, verifiable at a glance |
+| 2–3 | `gpt-5.6-terra` | Sonnet — the default for ordinary work |
+| 4–5 | `gpt-5.6-sol` | Opus — design leverage and subtle failure modes |
+
+Invoke as `codex exec -m <model> --sandbox workspace-write`, passing the task file as the
+prompt. Add `-c sandbox_workspace_write.network_access=true` when the task restores packages.
+
+**`terra`'s qualities are unverified.** The tier is taken on trust, not measurement. Treat a
+terra result the way you would treat an unfamiliar contractor's: check it before building on
+it, and if complexity-3 work keeps coming back wrong, move 3 to `sol` and record why rather
+than re-running terra hoping for a better draw.
+
+**Escalation is unchanged** and applies across vendors: two failed review or test cycles, or
+the model saying it cannot determine the answer. Not "it felt hard".
+
+**Verification does not move with the work.** The orchestrator stays responsible for the
+outcome — read the diff, run the build, check the claims against commands actually run. A model
+reporting success is exactly where a silent wrong answer enters, and that is truer across a
+vendor boundary, not less true.
 
 ## Risk is a separate axis
 
