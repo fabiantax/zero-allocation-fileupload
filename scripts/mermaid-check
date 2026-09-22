@@ -1,13 +1,18 @@
 #!/bin/sh
 # Parse-check every mermaid fence in tracked markdown with mermaid's own parser (mmdc).
-# Exit non-zero on the first parse error, naming the source file and diagram number.
-# Scope: structural AND full syntax (this is the real renderer's parser, not a regex).
+# Exit non-zero on any failure, naming the source file and diagram number, and showing
+# the actual error output so a browser-launch failure is not misread as a parse error.
 set -u
 
 command -v npx >/dev/null 2>&1 || { echo "mermaid-check: npx is required" >&2; exit 2; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+
+# Chromium on CI runners launches as an unprivileged user and needs --no-sandbox.
+cat > "$tmp/puppeteer.json" <<'CONF'
+{ "args": ["--no-sandbox", "--disable-setuid-sandbox"] }
+CONF
 
 python3 - "$tmp" <<'EOF'
 import subprocess, sys, pathlib
@@ -31,8 +36,9 @@ count=$(ls "$tmp"/*.mmd 2>/dev/null | wc -l | tr -d ' ')
 fail=0
 for mmd in "$tmp"/*.mmd; do
     src=$(cat "${mmd%.mmd}.src")
-    if ! npx -y @mermaid-js/mermaid-cli -i "$mmd" -o "${mmd%.mmd}.svg" >/dev/null 2>&1; then
-        echo "mermaid-check: PARSE ERROR in $src" >&2
+    if ! npx -y @mermaid-js/mermaid-cli -p "$tmp/puppeteer.json" -i "$mmd" -o "${mmd%.mmd}.svg" > "${mmd%.mmd}.err" 2>&1; then
+        echo "mermaid-check: FAILED in $src — mmdc output follows:" >&2
+        tail -n 5 "${mmd%.mmd}.err" >&2
         fail=1
     fi
 done
