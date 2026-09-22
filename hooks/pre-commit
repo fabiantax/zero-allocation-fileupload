@@ -1,0 +1,44 @@
+#!/bin/sh
+# Blocks commits that would introduce client-identifying terms into this public repo.
+# The term list lives in CLAUDE.local.md (gitignored), so no committed file names the client.
+# Activate once per clone:  git config core.hooksPath hooks
+
+TERMS_FILE="CLAUDE.local.md"
+
+if [ ! -f "$TERMS_FILE" ]; then
+  echo "pre-commit: $TERMS_FILE is missing — cannot screen for client identifiers." >&2
+  echo "            Restore it before committing (see CLAUDE.md)." >&2
+  exit 1
+fi
+
+pattern=$(sed -n '/BEGIN FORBIDDEN TERMS/,/END FORBIDDEN TERMS/p' "$TERMS_FILE" |
+  grep -vE 'FORBIDDEN TERMS|^[[:space:]]*#|^[[:space:]]*$' |
+  paste -sd'|' -)
+
+[ -z "$pattern" ] && exit 0
+
+hits=""
+
+# Staged file contents. Line numbers only — never echo the term itself.
+for f in $(git diff --cached --name-only --diff-filter=ACM); do
+  [ -f "$f" ] || continue
+  lines=$(grep -inE "$pattern" "$f" 2>/dev/null | cut -d: -f1 | tr '\n' ',')
+  [ -n "$lines" ] && hits="$hits
+  $f (lines: ${lines%,})"
+done
+
+# Staged filenames.
+for f in $(git diff --cached --name-only); do
+  echo "$f" | grep -qiE "$pattern" && hits="$hits
+  $f (filename)"
+done
+
+if [ -n "$hits" ]; then
+  echo "pre-commit: client-identifying term found in staged changes. Commit blocked." >&2
+  echo "$hits" >&2
+  echo "" >&2
+  echo "Use neutral wording ('the client', 'the company'). See CLAUDE.md." >&2
+  exit 1
+fi
+
+exit 0

@@ -1,0 +1,16 @@
+name: PR title references an issue
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-issue-reference:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require #<issue-number> in PR title
+        run: |
+          if ! echo "${{ github.event.pull_request.title }}" | grep -qE '#[0-9]+'; then
+            echo "::error::PR title must reference an issue, e.g. 'Add upload endpoint (#42)'."
+            exit 1
+          fi
