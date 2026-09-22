@@ -13,8 +13,8 @@ rules live one layer down in `../FileMutation.Application`.
 
 **Never here:** validation logic, mutation policy, storage. The endpoint
 parses multipart, maps the service result to a status code, and writes the
-response. Upload limits bind through `IOptions<UploadLimits>` — see
-`appsettings.json` and the pending consolidation in issue #44.
+response. Upload limits bind through `IOptions<UploadLimits>`; `appsettings.json` supplies
+overrides when needed, and omitted values use the class defaults.
 
 CI starts this host on an https address and fetches the OpenAPI document — a
 gate `WebApplicationFactory` tests structurally cannot be, since TestServer
