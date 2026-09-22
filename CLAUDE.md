@@ -194,6 +194,21 @@ broad, or hiding an unstated decision — not about the model.
 blast radius. Route on complexity; *gate* on risk — anything touching published artifacts,
 credentials, git history or CI gets a human check regardless of its number.
 
+### Implementation runs on OpenAI models
+
+Claude's weekly quota is the binding constraint. Implementation is delegated to Codex; Claude
+orchestrates — picks the task, reviews the result, handles git and traceability.
+
+| Complexity | Codex model | Claude equivalent |
+|---|---|---|
+| 1 | `gpt-5.6-luna` | Haiku |
+| 2–3 | `gpt-5.6-terra` | Sonnet |
+| 4–5 | `gpt-5.6-sol` | Opus |
+
+`codex exec -m <model> --sandbox workspace-write`, task file as the prompt; add
+`-c sandbox_workspace_write.network_access=true` for package restore. Full detail and the
+caveat about `terra` being unmeasured: `.claude/rules/complexity-routing.md`.
+
 ## Work classification
 
 Every story carries two accounting fields:
