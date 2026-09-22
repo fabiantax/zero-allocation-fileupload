@@ -78,10 +78,11 @@ so it cannot be rewritten in one forward pass — it must be buffered whole. Tha
 bytes lands there), and `DocumentFormat.OpenXml` is unlikely to survive trimming under NFR-9.
 It is also not a text file, so it sits outside the ticket entirely.
 
-**The part worth saying out loud:** this is exactly why `MutationCapability` exists on the
-port. If every adapter presented a uniform interface, adding a buffering one would quietly
-turn "zero-allocation" into "zero-allocation for `.txt`" with nothing in the type system
-saying so. Declaring `BufferedRewrite` forces the admission.
+**An earlier version tried to encode this as a `MutationCapability` enum on the port, so a
+buffering adapter would have to declare itself.** That was dropped: an enum an adapter sets on
+itself is self-reported, and nothing stops a buffering implementation declaring `Streaming`. If
+a second format ever needs a different execution model, it gets its own contract — a claim
+verified by nothing is not a safeguard.
 
 **Where:** ADR-0009, PRD out-of-scope table.
 
@@ -203,21 +204,34 @@ trust it.
 
 **Where:** epic, tasks 002 and 003.
 
-### 2.5 Format identity on the existing port
+### 2.5 Validation ordering, and where the rules live
 
-**Asked:** should there be a separate `IFileFormatMutator`?
+**Asked:** the API is an entry point to business rules — validation should be reusable outside
+the API. And keep it simple.
 
-**Decided:** no. `IFileMutator` gains `Format` and `MutationCapability`; a registry resolves
-one adapter and returns a result — never a fallback — when none matches.
+**Decided:** one acceptance function in `FileMutation.Application`, taking content plus declared
+filename and content-type, returning a result. No ASP.NET Core types. The endpoint parses
+multipart, calls it, and maps the result to a status code. **The whole upload is read and
+validated before any response byte is written.**
 
-**Why:** a parallel port would have taken the same inputs and returned the same outputs,
-differing from the existing one in name only. That is duplication, not abstraction.
+**Why the ordering is not a style preference:** an HTTP response is status, then headers, then
+body. Once a body byte is flushed the status is committed. The earlier design interleaved —
+read a chunk, write a chunk — while still validating UTF-8, and promised a 415 on failure.
+That is impossible: the caller would receive a truncated 200. Reading and deciding before
+writing is the only ordering in which the stated error contract can hold at all.
 
-**Why no fallback:** a default mutator would mean an unmatched format silently gets treated as
-plain text — corrupting a file the endpoint promised to reject. Rejection by construction
-beats rejection by remembering to check.
+**Why the rule lives in Application:** if it cannot be called from a console app or a unit test
+with a byte array and no HTTP in scope, it is not a business rule — it is endpoint code wearing
+a business rule's name.
 
-**Where:** ADR-0009, task 002.
+**What was dropped to get here:** a mutator registry and a `MutationCapability` enum. With one
+accepted format the registry restated the acceptance rule in a second place and pushed
+HTTP-shaped metadata into a domain port. The enum was worse — self-reported metadata nothing
+enforced, so an adapter could declare `Streaming` and buffer anyway. A claim verified by nothing
+is not a safeguard, which is the same standard applied to the review gate elsewhere in this
+repo.
+
+**Where:** ADR-0009, tasks 002 and 004.
 
 ### 2.6 CQRS / MediatR
 
@@ -290,11 +304,15 @@ heap — anything from ~85,000 bytes lands there — *per concurrent request*. A
 of tens of concurrent uploads, that allocation pattern dominates everything else the service
 does. Pipelines provides pooled buffers and back-pressure without hand-rolling either.
 
-**The claim, stated precisely:** "zero-allocation" here means **no per-request allocation that
-scales with file size** — not literally zero bytes, which nothing on .NET achieves. It is
-measured with BenchmarkDotNet `[MemoryDiagnoser]` rather than asserted. Saying it precisely is
-the point: an unqualified "zero allocation" is not defensible under questioning, and the
-measurement is what makes the qualified version checkable.
+**The claim, stated precisely:** validation has to complete before the response starts, so the
+upload *is* held — in pooled `Pipe` segments, each far below the 85,000-byte LOH threshold. A
+10 MB upload therefore never produces a 10 MB array. The defensible claim is **no large-object-heap
+allocation, and pooled memory per request bounded by the maximum upload size** — not "nothing is
+ever buffered", which the error contract rules out, and not an unqualified "zero allocation",
+which nothing on .NET achieves.
+
+Measured with BenchmarkDotNet `[MemoryDiagnoser]` across several file sizes, reporting the
+slope rather than a single number — a single measurement cannot show whether allocation scales.
 
 **Where:** PRD NFR-1/NFR-2/NFR-3, tasks 003 and 008.
 

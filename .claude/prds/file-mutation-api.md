@@ -73,18 +73,18 @@ Acceptance criteria:
 | FR-3 | The mutated file is returned as a download using the original (sanitised) filename |
 | FR-4 | An OpenAPI document and a browser UI (Scalar) document the endpoint, its responses, and its error shapes |
 | FR-5 | Upload size is capped at a configurable limit (Kestrel + `MultipartBodyLengthLimit`) |
-| FR-6 | Only `.txt` files declared `text/plain` and decodable as UTF-8 (BOM optional) are accepted. All three checks must pass; anything else is rejected with 415 |
+| FR-6 | Only `.txt` files declared `text/plain` and decodable as UTF-8 (BOM optional) are accepted. All three checks must pass; anything else is rejected with 415. **The whole upload is read and validated before any response byte is written** |
 | FR-7 | Application-generated errors raised **before the response has started** return RFC 7807 `ProblemDetails`. Transport-level failures (malformed HTTP, client disconnect, cancellation) and any failure after the response body has begun terminate the exchange without a structured body — this is a framework limit, not a choice |
 | FR-8 | The mutation rule sits behind a port (`IFileMutator`) so it can be replaced without touching the API or application layer |
-| FR-9 | `IFileMutator` carries its `Format` and `MutationCapability`, and `IFileMutatorRegistry` resolves filename + content-type to one. A format needing different treatment is added as another adapter without touching the endpoint or the use case. Exactly one adapter ships: UTF-8 plain text |
+| FR-9 | Acceptance rules live in `FileMutation.Application` as a plain function over the content and its declared metadata, returning a result. It takes no ASP.NET Core types, so it is callable from a test, a console app or a queue consumer without an HTTP request. The API is an entry point to it, not its owner |
 
 ## Non-Functional Requirements
 
 | # | Requirement |
 |---|---|
-| NFR-1 | Handle tens of concurrent uploads without unbounded memory growth — file content is streamed via `System.IO.Pipelines`, never buffered whole into a `byte[]`/`string` |
+| NFR-1 | Handle tens of concurrent uploads without unbounded memory growth. Content is read through `System.IO.Pipelines` into pooled segments and never materialised as a single `byte[]` or `string`. Peak memory per request is bounded by the configured maximum upload size, and the buffers are returned to the pool |
 | NFR-2 | Fully asynchronous I/O end to end |
-| NFR-3 | Allocation per request measured and recorded; no large-object-heap allocations on the hot path |
+| NFR-3 | Allocation per request measured and recorded; **no large-object-heap allocations** — pooled pipe segments keep every buffer well under the 85,000-byte LOH threshold regardless of file size |
 | NFR-4 | ≥80% **branch** coverage (not line coverage), enforced in CI |
 | NFR-5 | Domain and Application layers have no compile-time dependency on Infrastructure or Api |
 | NFR-6 | Public members carry XML documentation; ADRs are linked from XML docs where a decision explains the code |
