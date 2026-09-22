@@ -26,6 +26,58 @@ pooled memory per request: 784 B per operation at 1 KB and 256 KB, 792 B at 10 M
 sizes, though at 1 KB this path is 2.58× slower than the naive path. The full measurements are
 recorded in [the allocation benchmark results](docs/benchmarks/allocation-results.md).
 
+What happens to one upload, end to end — the two-phase ordering is what makes every rejection
+carry a correct status instead of a truncated success:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Client / Scalar UI
+    participant K as Kestrel request limits
+    participant E as FileMutateEndpoint
+    participant A as FileAcceptance
+    participant M as DateAndRandomSequenceMutator
+    participant D as Domain mutation policy
+
+    C->>K: POST multipart/form-data
+
+    alt Content-Length over the ceiling
+        K-->>C: 413 ProblemDetails (refused before reading)
+    else accepted for reading
+        K->>E: forward request
+
+        rect rgb(245,245,245)
+        note over E,A: PHASE 1: read and validate. No response written yet.
+        loop each pooled pipe segment
+            E->>E: buffer segment · count part bytes
+            E->>A: decode incrementally, carry partial UTF-8 across the boundary
+        end
+        E->>A: check .txt, text/plain, decoded cleanly
+        A-->>E: Result
+        end
+
+        alt part exceeded the byte limit
+            E-->>C: 413 ProblemDetails
+        else missing or empty file field
+            E-->>C: 400 ProblemDetails
+        else not an accepted format
+            E-->>C: 415 ProblemDetails
+        else accepted
+            rect rgb(245,245,245)
+            note over E,D: PHASE 2: respond. Status is committed from here.
+            E->>M: Mutate(buffered content) through IFileMutator
+            M->>D: append into span: utcNow, randomSequence
+            D-->>M: bytes written
+            M-->>E: mutated content
+            E-->>C: 200 + Content-Disposition, original filename
+            end
+        end
+    end
+```
+
+The layer view and the request-lifecycle state machine are in
+[docs/architecture.md](docs/architecture.md).
+
 The operation is transient: upload, validate, mutate, return. Nothing is written to
 disk or a database, and there is no storage port. Validation completes before the response starts,
 so an invalid final UTF-8 byte can still produce a 415 instead of a truncated 200. The successful
