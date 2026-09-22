@@ -9,7 +9,7 @@ is superseded.
 
 The operation returns transformed bytes synchronously and has no requirement to retrieve them
 later. An early design retained `IFileRepository` so storage could supposedly be added by swapping
-an adapter. The independent [design review](../reviews/2026-09-22-independent-design-review.md)
+an adapter. The independent design review of 2026-09-22
 identified the contradiction: a required repository dependency is not optional, while an unused
 one is speculative scaffolding. The [decision log](../decision-log.md#15-everything-else-that-was-deliberately-not-built)
 records the correction, and PR #18 (`0f6d7af`) answered OQ-1, removed the repository and disk

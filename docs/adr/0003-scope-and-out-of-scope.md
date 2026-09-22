@@ -10,7 +10,7 @@ The ticket asks for one synchronous transformation: receive a text file, append 
 random sequence, and return it. The [decision log](../decision-log.md#15-everything-else-that-was-deliberately-not-built)
 traced each proposed extra back to a requirement and found none for a stored-file lifecycle,
 regulated audit, production access control, traffic management, or alternate ingestion channel.
-The independent [design review](../reviews/2026-09-22-independent-design-review.md) then found that
+The independent design review of 2026-09-22 then found that
 the planned repository, registry, and capability seams were extensions for requirements already
 declared out of scope. PRs #18 and #19 (`0f6d7af`, `4516930`) removed them before implementation.
 

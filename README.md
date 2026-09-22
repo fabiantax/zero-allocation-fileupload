@@ -136,7 +136,6 @@ adding a port; see [ADR 0008](docs/adr/0008-persistence-deferral.md).
 | Accepted format and the deleted dispatch abstractions | [ADR 0009](docs/adr/0009-accepted-formats-and-mutator-dispatch.md) |
 
 The full independent critique is retained at
-[docs/reviews/2026-09-22-independent-design-review.md](docs/reviews/2026-09-22-independent-design-review.md),
 including findings that changed the design.
 
 ## Contributing
