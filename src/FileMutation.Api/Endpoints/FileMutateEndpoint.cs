@@ -44,14 +44,6 @@ public static class FileMutateEndpoint
             .ProducesProblem(StatusCodes.Status415UnsupportedMediaType);
     }
 
-    // Baseline suppression, not an exemption. ExecuteAsync trips S138 (105 lines), S3776
-    // (cognitive complexity 23) and S1541 (cyclomatic complexity 14) because it does five jobs:
-    // parse multipart, buffer, count bytes, validate, respond. Issue #31 extracts the middle
-    // three into a reusable Application service and DELETES these three attributes. Do not add
-    // a fourth, and do not copy this block to another method.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S138:Methods should not have too many lines", Justification = "Extracted by #31")]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Critical Code Smell", "S3776:Cognitive Complexity of methods should not be too high", Justification = "Extracted by #31")]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1541:Methods and properties should not be too complex", Justification = "Extracted by #31")]
     private static async Task<IResult> ExecuteAsync(
         HttpContext httpContext,
         IFileMutator fileMutator,
