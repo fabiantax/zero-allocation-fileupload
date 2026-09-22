@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted, research-only** — 2026-09-22. No mediator is implemented; the ADR is the complete
+**Accepted, research-only**: 2026-09-22. No mediator is implemented; the ADR is the complete
 deliverable of this evaluation.
 
 **Winner:** the hand-rolled `IRequest`/`IRequestHandler` dispatcher wins the paper comparison,
@@ -24,10 +24,9 @@ That absence is a finding, not an oversight. The evaluation therefore asks a nar
 and design question: if a mediator were introduced, which surface would be least unsuitable for
 this code? It does not assume that one should be introduced.
 
-The comparison is paper-only. Issue #15, which would have implemented the winning mediator on a
-variant branch, is closed as not planned. Separately, issue #31's planned extraction of a
-reusable file-processing service from the endpoint is plain dependency injection: one service
-called directly through a constructor-injected interface. It creates no command abstraction,
+The comparison is paper-only. The implementation variant is closed as not planned. Separately, the
+planned extraction of a reusable file-processing service from the endpoint is plain dependency
+injection: one service called directly through a constructor-injected interface. It creates no command abstraction,
 handler discovery, or dispatcher, and is not a way of adopting this ADR's outcome indirectly.
 
 Only three candidates were compared:
@@ -78,12 +77,12 @@ trend analysis.
 | Archived | no | no |
 
 Both are alive. MediatR shows the larger user base and zero open issues, but its last release and
-push are roughly two and a half months old at the time of checking — consistent with a mature
+push are roughly two and a half months old at the time of checking, consistent with a mature
 library in maintenance mode rather than active development. Wolverine is younger and far more
 active, with a broader contributor base relative to its size, at the cost of an issue tracker that
 reflects a project still moving quickly. Neither figure changes the decision above: they describe
 the cost of *adopting* a dependency at all, and the finding here is that there is no dispatch
-problem that justifies one. The hand-rolled option has no row in this table — its maintainer,
+problem that justifies one. The hand-rolled option has no row in this table. Its maintainer,
 contributor and issue tracker would be this repository itself, which is exactly the "code we own
 forever" cost listed under Consequences.
 
@@ -100,7 +99,7 @@ The current composition is the right one for one synchronous command:
 | Hand-rolled dispatcher | With built-in DI, a minimal request/handler pair can be explicit, licence-free, and shaped around the existing streams and result types. It wins only as a fallback. Its cost is code this repository owns forever: registration, lifetimes, error propagation, and tests for a dispatcher that currently has exactly one call site. |
 | Wolverine | [MIT-licensed](https://github.com/JasperFx/wolverine/blob/main/LICENSE) (checked 2026-09-22), and its `IMessageBus.InvokeAsync` surface can act as a local command bus. It still brings a framework-sized host, configuration, and execution model to a one-command API. That dependency is not justified by local invocation alone; capabilities outside this comparison were neither counted nor needed. |
 
-No mediator is implemented. Issue #15 is closed as not planned, and task 009 ships this document
+No mediator is implemented. The implementation variant is closed as not planned, and task 009 ships this document
 alone. The direct endpoint remains on `main`.
 
 Had implementation been approved, any of the three candidates would be required to call the same
@@ -118,7 +117,7 @@ changing query path. CQRS's separation buys nothing here.
 
 ## Consequences
 
-- The endpoint and issue #31's future file-processing service keep direct, constructor-injected
+- The endpoint and the future file-processing service keep direct, constructor-injected
   composition. There is no command DTO, handler, mediator package, licence gate, or dispatch
   indirection to maintain.
 - The service gives up the conventions reviewers may recognize from MediatR: cross-cutting

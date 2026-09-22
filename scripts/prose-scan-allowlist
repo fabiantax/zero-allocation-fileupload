@@ -1,0 +1,3 @@
+# path|metric|reason
+# Add an exception only when the retained prose is more valuable than the threshold.
+# More than 10 entries fails the scan and requires reviewing the thresholds instead.
