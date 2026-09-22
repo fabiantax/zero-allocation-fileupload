@@ -18,6 +18,10 @@ A story may be picked up only when all of these hold:
       rework is not.
 - [ ] **The proof is known.** Before starting, we can name which test, measurement, or
       check will demonstrate it works. If nothing can demonstrate it, the story is not ready.
+- [ ] **A pre-mortem exists.** Assume the story failed — why? One likely failure, one early
+      signal that would reveal it, one kill criterion. Written before starting; written
+      afterwards it is a post-mortem and has already cost what it was meant to save.
+      Tooling and environment count, and usually dominate here.
 - [ ] **It is linked** to the epic and has a GitHub issue number.
 
 ## Definition of Done

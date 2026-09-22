@@ -45,6 +45,28 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: pre-mortem
+    attributes:
+      label: Pre-mortem — assume this failed. Why?
+      description: |
+        Written **before** starting, not after. Three things, briefly:
+
+        1. **Most likely failure** — what actually goes wrong, not "it might be hard".
+        2. **Early signal** — what you would see first if it were going wrong. A trip-wire you
+           could notice in ten minutes beats a post-mortem in two days.
+        3. **Kill criterion** — the point at which you stop and ask rather than push on.
+
+        Tooling counts, and on this project it usually dominates: a blocked sandbox turns
+        "did not run" into "no complaint", so a gate that silently never executed looks
+        identical to one that passed. See `.claude/rules/sandbox-pre-mortem.md`.
+      value: |
+        **Most likely failure:**
+        **Early signal:**
+        **Kill criterion:**
+    validations:
+      required: true
+
   - type: input
     id: depends-on
     attributes:
