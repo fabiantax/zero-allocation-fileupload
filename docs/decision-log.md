@@ -96,6 +96,24 @@ the difference between deferring a decision and ignoring it.
 
 **Where:** PRD out-of-scope table (14 rows, each with its reason), PRD open questions OQ-1…4.
 
+### 1.6 Maximum upload size
+
+**Asked:** add a max file size.
+
+**Decided:** a configurable cap enforced by Kestrel's `MaxRequestBodySize` plus
+`MultipartBodyLengthLimit` — **before the body is read**. Over the limit is 413.
+
+**Why the ordering matters:** enforcing a size limit after reading the body means you have
+already paid the cost you were trying to avoid. A caller gets to stream unlimited bytes into
+the process before being told no. Pre-read enforcement is the only version that actually
+protects the resource.
+
+**Consequence:** a length check further down the pipeline is dead code — the framework already
+rejected the request. Writing one anyway is the common mistake, and it looks like defence in
+depth while testing nothing.
+
+**Where:** PRD FR-5, task 004.
+
 ---
 
 ## 2. Architecture
@@ -228,6 +246,113 @@ ports-and-adapters seams, which is the architecture the ticket asked for.
 
 **Where:** `.claude/rules/dotnet-conventions.md`.
 
+### 2.9 Structure for multiple consuming domains
+
+**Asked:** make the solution structure DDD-compliant, assuming several domains consume this as
+a shared capability.
+
+**Decided:** four projects — Domain, Application, Infrastructure, Api — and consuming domains
+bind to the **OpenAPI/HTTP contract**, never to our domain types.
+
+**Why:** if another team references our domain assembly, two things break at once. Their
+release cycle couples to ours, so we cannot refactor an internal type without breaking them;
+and our internal model silently becomes a public API we never agreed to support. The wire
+contract is the published language, and the bounded-context boundary is the HTTP surface, not
+a shared NuGet package. This is the same reason API DTOs map at the endpoint and never reach
+Domain.
+
+**Where:** epic "Domain Modelling Stance", PRD NFR-5, task 007 (enforced by architecture tests).
+
+### 2.10 Streaming, async, and what "zero-allocation" actually claims
+
+**Asked:** use `System.IO.Pipelines` and async throughout.
+
+**Decided:** `PipeReader`/`PipeWriter` end to end, operating on `ReadOnlySequence<byte>`, with
+no whole-file buffer anywhere.
+
+**Why:** a naive `ReadAllBytes` on a large upload allocates the entire file on the large-object
+heap — anything from ~85,000 bytes lands there — *per concurrent request*. At the assumed load
+of tens of concurrent uploads, that allocation pattern dominates everything else the service
+does. Pipelines provides pooled buffers and back-pressure without hand-rolling either.
+
+**The claim, stated precisely:** "zero-allocation" here means **no per-request allocation that
+scales with file size** — not literally zero bytes, which nothing on .NET achieves. It is
+measured with BenchmarkDotNet `[MemoryDiagnoser]` rather than asserted. Saying it precisely is
+the point: an unqualified "zero allocation" is not defensible under questioning, and the
+measurement is what makes the qualified version checkable.
+
+**Where:** PRD NFR-1/NFR-2/NFR-3, tasks 003 and 008.
+
+### 2.11 Returning the file under its original name
+
+**Asked:** return the same filename — and what is `Content-Disposition`?
+
+**What it is:** a response header that tells the browser to treat the body as a download rather
+than render it, and what to call the saved file:
+`Content-Disposition: attachment; filename="report.txt"`. Without it the browser displays the
+content inline and, if it does save, names the file after the URL path.
+
+**Decided:** `Results.File(..., fileDownloadName:)` rather than writing the header by hand.
+
+**Why:** filenames containing non-ASCII characters, quotes or semicolons need RFC 5987
+encoding (`filename*=UTF-8''...`) alongside the plain `filename` for older clients. Hand-writing
+that is easy to get subtly wrong and the framework already does it. Separately, `FileName` is a
+value object that sanitises on the way in — rejecting path traversal — while preserving the
+original for the response.
+
+**Where:** PRD FR-3, `.claude/rules/dotnet-conventions.md`, task 004.
+
+### 2.12 Standard error responses
+
+**Asked:** use standard error responses.
+
+**Decided:** built-in `AddProblemDetails()` (RFC 7807), with a single `IExceptionHandler`.
+
+**Why the standard rather than our own:** a custom error envelope is a format to invent,
+document and version, and every client then needs bespoke parsing for it. RFC 7807 is already
+understood by tooling and by anyone who has consumed a .NET API.
+
+**Why one handler rather than per-endpoint `try/catch`:** scattered catch blocks mean *most*
+error paths return `ProblemDetails` and one leaks a stack trace. A single handler makes the
+guarantee structural instead of a thing to remember.
+
+**Where:** PRD FR-7, task 004.
+
+### 2.13 Dependency injection
+
+**Asked by the ticket:** "Utilize dependency injection."
+
+**Decided:** the built-in container, configured with
+`ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }`.
+
+**Why:** nothing here needs a third-party container. The two flags are the part worth pointing
+at — they turn lifetime mistakes (a captive dependency, a scoped service resolved from the
+root) into a startup failure rather than a production bug that only appears under concurrency.
+
+**Where:** PRD NFR-7, epic architecture decisions.
+
+### 2.14 Naming
+
+**Asked:** "FileUpload" as a solution name collides with UI file-upload components.
+
+**Decided:** `FileMutation.*`.
+
+**Why:** the service's job is the mutation; uploading is merely how the bytes arrive. Naming
+for the domain concept rather than the transport mechanism resolves the collision and
+describes the thing more accurately.
+
+### 2.15 Order of work: something demonstrable first
+
+**Asked:** get POC visibility as early as possible — the OpenAPI UI working in a browser
+first, then shared contracts so work can run in parallel, then everything else.
+
+**Decided:** exactly that, expressed as the dependency graph. Feasibility spike → running host
+with the OpenAPI UI and CI → contracts → parallel fan-out.
+
+**Why:** the contracts step is the one that pays. Until the ports and DTOs are merged, every
+other stream is either blocked or guessing at a signature it will have to change. Landing that
+one small task early is what turns eleven remaining tasks from a queue into a fan-out.
+
 ---
 
 ## 3. Verification
@@ -266,6 +391,44 @@ and a quiet machine. Folding them into the gated suite would make both worse.
 from the first merge means the mechanism is proven early and only the number changes later.
 
 **Where:** tasks 001 and 012, `.claude/rules/definition-of-ready-done.md`.
+
+### 3.5 Testability treated as a design constraint
+
+**Asked:** the code must be optimised for testability.
+
+**Decided:** `TimeProvider` injected, `IRandomSequenceGenerator` injected, the mutation policy a
+pure function over spans, no static state, nothing host-dependent.
+
+**Why:** the only two things that make this feature awkward to test are the clock and the
+random sequence — both non-deterministic by nature. Injecting them makes the output
+byte-identical under a fake, so the assertion can be on exact bytes rather than a loose regex.
+The pure policy means the hot path is testable against a stack-allocated span with no streams
+and no ASP.NET Core types in scope at all.
+
+**Worth noticing:** the testability came from *removing* dependencies rather than adding
+abstractions. `TimeProvider` is a native seam; a hand-written `IClock` would have been an extra
+interface achieving the same thing while signalling unfamiliarity with the platform.
+
+**Where:** PRD NFR-8, tasks 002 and 006.
+
+### 3.6 Documenting methods and classes
+
+**Asked by the ticket:** "Briefly document your methods and classes."
+
+**Decided:** XML documentation on public types and members, with ADR links from the XML docs
+where a decision explains the code.
+
+**Why:** XML docs are not just comments here — they surface in IDE tooltips and flow into the
+generated OpenAPI document, so they serve API consumers rather than only future readers. The
+ADR link keeps the reasoning one hop away instead of bloating the comment with it.
+
+### 3.7 Test project naming
+
+**Decided:** one test project per source project, named `FileMutation.<Project>.Tests`.
+
+**Why:** `*.Tests` greps cleanly and each suite's subject is unambiguous from its name alone.
+The architecture suite follows the same pattern even though its subject is the solution's shape
+rather than one project.
 
 ---
 
