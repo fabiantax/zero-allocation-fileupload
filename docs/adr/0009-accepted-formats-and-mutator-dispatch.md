@@ -53,9 +53,16 @@ has one adapter; that is what ports-and-adapters looks like. What the registry b
 format resolution has one home and cannot silently fall back — an unmatched format is a
 rejection by construction, not by remembering to check.
 
-**`MutationCapability` exists so a future adapter cannot lie.** A `.docx` adapter must buffer
-the whole archive, because a ZIP central directory sits at the end of the file and cannot be
-rewritten in one forward pass. That breaks NFR-1 (no whole-file buffering) and NFR-3 (no LOH
+**`MutationCapability` makes the execution model explicit — but it is self-reported.** Nothing
+in the type system stops a buffering implementation declaring `Streaming`; it is a claim by the
+adapter, verified only by a test. Stronger designs exist (separate `IStreamingMutator` and
+`IBufferedMutator` contracts with different orchestration), and would be the right move if a
+second format ever arrives.
+
+A `.docx` adapter would need seekable storage or buffering. Note the weaker, accurate form of
+this: `ZipArchiveMode.Update` holds the archive in memory, and rewriting an OPC package through
+the OpenXML SDK needs random access — but that is a constraint of the chosen libraries, not a
+law of the ZIP format, since `ZipArchiveMode.Create` can write to a non-seekable stream. That breaks NFR-1 (no whole-file buffering) and NFR-3 (no LOH
 allocations — anything over ~85,000 bytes lands there), and `DocumentFormat.OpenXml` is
 unlikely to survive trimming under NFR-9. If every adapter presented a uniform interface, the
 "zero-allocation" claim would quietly become "zero-allocation for `.txt`" with nothing in the

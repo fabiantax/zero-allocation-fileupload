@@ -27,7 +27,7 @@ built-in DI. Tests: xUnit, `WebApplicationFactory`, ArchUnitNET, coverlet + Repo
 
 The pattern is **built-in before third-party** — every added package is one that must be
 trim-safe for AOT. Excluded on purpose: Swashbuckle and Newtonsoft.Json (reflection-based,
-block AOT), MVC controllers (not AOT-supported), EF Core/SQLite (no persistence requirement).
+block AOT), MVC controllers (not AOT-supported), EF Core/SQLite/any storage (nothing is persisted — upload, mutate, return).
 
 **Before simplifying:** the planning weight is deliberate and is part of the deliverable. Do
 not strip it as cleanup. Every rule in `.claude/rules/` names the failure it closes; if one

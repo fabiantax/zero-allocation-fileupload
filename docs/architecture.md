@@ -6,6 +6,21 @@ once those tasks land (task 010 owns that pass).
 
 Source of truth for the decisions behind them: `.claude/epics/file-mutation-api/epic.md`.
 
+> **Known unresolved issue — the late-validation problem.**
+> The flow below streams mutated bytes to the response while still validating UTF-8, then shows
+> an invalid sequence producing a 415. **That cannot work.** Once output is flushed the status
+> and headers are committed, so the caller receives a truncated 200 instead. An independent
+> review caught this; it is not yet fixed. Three ways out, none free:
+> 1. Validate and spool the whole mutated body before the response starts — bounded memory via
+>    `FileBufferingWriteStream`, but "never buffered whole" stops being true.
+> 2. Drop content validation and treat the upload as opaque bytes — true streaming, but
+>    `.json`/UTF-16 corruption comes back.
+> 3. Keep streaming and document that a failure after response start aborts the body and
+>    cannot return `ProblemDetails`.
+>
+> The diagrams still show the broken version deliberately, so the gap stays visible until the
+> decision is made rather than being quietly papered over.
+
 ## 1. Structure — layers, ports and adapters
 
 The dependency rule is the point of this diagram: **arrows only ever point inward**. Domain
@@ -36,14 +51,12 @@ graph TB
         POL["Mutation policy<br/>pure fn over Span&lt;byte&gt;"]
         P1(["IFileMutator<br/>Format + MutationCapability"])
         P0(["IFileMutatorRegistry"])
-        P2(["IFileRepository"])
         P3(["IRandomSequenceGenerator"])
     end
 
     subgraph infra["FileMutation.Infrastructure — adapters"]
         MUT["DateAndRandomSequenceMutator<br/>Format: PlainTextUtf8 · Streaming"]
         REG["FormatRegistry<br/>one entry today"]
-        REPO["LocalDiskFileRepository<br/>deferred — task 005"]
         RNG["CryptoRandomSequenceGenerator"]
     end
 
@@ -59,11 +72,9 @@ graph TB
     UC --> P0
     P0 -. resolves .-> P1
     UC --> P1
-    UC --> P2
 
     MUT -. implements .-> P1
     REG -. implements .-> P0
-    REPO -. implements .-> P2
     RNG -. implements .-> P3
 
     MUT --> POL
@@ -72,11 +83,8 @@ graph TB
 
     DI -. wires .-> REG
     DI -. wires .-> MUT
-    DI -. wires .-> REPO
     DI -. wires .-> RNG
 
-    classDef deferred stroke-dasharray: 5 5
-    class REPO deferred
 ```
 
 **Why the split between `POL` and `MUT` matters.** Domain owns *what* is appended and in what
@@ -156,12 +164,14 @@ sequenceDiagram
     end
 ```
 
-Every failure path lands on a single `IExceptionHandler` rather than per-endpoint `try/catch` —
-that is what keeps *all* errors emerging as `ProblemDetails` instead of most of them doing so
-and one leaking a stack trace.
+Two different mechanisms, which an earlier version of this document wrongly conflated:
 
-Validation failures return a result; they do not throw. A rejected upload is an expected
-outcome, and throwing on it costs an allocation plus a stack unwind on a hot path.
+- **Expected validation failures return a result**, and the endpoint turns that result directly
+  into `TypedResults.Problem`. They never throw — a rejected upload is an ordinary outcome, and
+  throwing costs an allocation plus a stack unwind on a hot path.
+- **`IExceptionHandler` handles unexpected exceptions only.** It is reached through the
+  exception-handling middleware, so it cannot dispatch result-based validation failures, and it
+  can only produce a response while one has not yet started.
 
 ## 3. State machine — request lifecycle
 
@@ -199,8 +209,8 @@ stateDiagram-v2
 
     note right of Streaming
         No state is retained between requests.
-        Persistence is a deferred port, not a
-        lifecycle stage — see PRD OQ-1.
+        Nothing is written to disk or a
+        database — see PRD OQ-1, answered.
     end note
 
     note right of Resolving
@@ -211,8 +221,8 @@ stateDiagram-v2
 ```
 
 The machine has **no persisted state**: every terminal transition ends the request, and nothing
-survives it. That is what makes `IFileRepository` a genuinely optional port rather than a hole
-in the design.
+survives it. The mutated bytes go to the response and are then gone — there is no store, and
+therefore no storage port.
 
 ## Mapping to the task breakdown
 
@@ -222,5 +232,4 @@ in the design.
 | `FileName`, mutation policy, ports, `FileFormat`, `MutationCapability`, registry | 002 |
 | `DateAndRandomSequenceMutator`, segment handling | 003 |
 | Endpoint, validation, `IExceptionHandler`, `Content-Disposition` | 004 |
-| `LocalDiskFileRepository` | 005 — deferred, blocked on OQ-1/OQ-2 |
 | Dependency-rule enforcement | 007 |
