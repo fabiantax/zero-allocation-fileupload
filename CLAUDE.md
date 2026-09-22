@@ -23,7 +23,7 @@ perfect solution". What is actually being delivered is evidence of engineering j
   verification. That practice is part of what is being shown, not overhead around it.
 
 The repo name reflects the technical throughline: the upload path streams via
-`System.IO.Pipelines` with no whole-file buffering, and publishes with Native AOT. Both are
+`System.IO.Pipelines` with no whole-file buffering, and publishes with Native AOT (proven, parked — see ADR-0001). Both are
 deliberate — they are where the depth is demonstrated, and they reinforce each other, since
 AOT's trim-safe discipline and a zero-allocation hot path demand the same thing.
 

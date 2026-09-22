@@ -55,8 +55,11 @@ Honest list, rather than a clean surface:
    validating UTF-8, then promises a `ProblemDetails` on failure — impossible once the response
    has started. Three resolutions are documented at the top of
    [`docs/architecture.md`](docs/architecture.md); none is chosen yet.
-2. **Native AOT is unproven** with the chosen OpenAPI UI. That is what [#2](../../issues/2)
-   exists to settle, by publishing and running the binary rather than by argument.
+2. **Native AOT is proven but parked.** [#2](../../issues/2) published a native binary that
+   served the OpenAPI document and Scalar UI with zero trim warnings (13.15 MiB, 17.6 ms median
+   cold start). It is deliberately **not enabled**: setting `PublishAot` runs the analyzers on
+   every build and cost a five-minute cold build, and a fast inner loop is worth more than a
+   startup optimisation nobody asked for. See `docs/adr/0001-native-aot.md`.
 3. **OQ-2 (audit trail / regulated context) is unanswered.** Default taken: out of scope.
 
 ## Scope

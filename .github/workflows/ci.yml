@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.301
+      - run: dotnet build --configuration Release
+      - run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
+      - name: Enforce branch coverage threshold
+        shell: pwsh
+        run: |
+          $coverageFile = Get-ChildItem TestResults -Filter coverage.cobertura.xml -Recurse | Select-Object -First 1
+          if ($null -eq $coverageFile) { throw "No Cobertura coverage report was produced." }
+          [xml]$coverage = Get-Content $coverageFile.FullName
+          $branchCoverage = [double]$coverage.coverage.'branch-rate' * 100
+          Write-Host "Branch coverage: $branchCoverage% (threshold: 0%)"
+          if ($branchCoverage -lt 0) { throw "Branch coverage is below the 0% threshold." }
