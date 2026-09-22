@@ -1,0 +1,12 @@
+### Mutate test.txt through the upload endpoint (VS Code REST Client: "Send Request" above)
+### The response carries the mutated file under its original name via Content-Disposition.
+
+POST http://localhost:5000/files/mutate
+Content-Type: multipart/form-data; boundary=----FileMutationBoundary
+
+------FileMutationBoundary
+Content-Disposition: form-data; name="file"; filename="test.txt"
+Content-Type: text/plain
+
+< ./test.txt
+------FileMutationBoundary--

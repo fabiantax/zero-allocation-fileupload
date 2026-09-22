@@ -52,7 +52,7 @@ A command-line round trip is:
 
 ```bash
 curl --fail-with-body \
-  --form 'file=@src/FileMutation.Api/test.txt;type=text/plain' \
+  --form 'file=@example.txt;type=text/plain' \
   --remote-header-name \
   --remote-name \
   http://localhost:5000/files/mutate
