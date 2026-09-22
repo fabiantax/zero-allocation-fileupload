@@ -26,55 +26,52 @@ obvious candidate — what shape should accommodate them?
 ## Decision
 
 **Accept exactly one format.** `.txt`, declared `text/plain`, decodable as UTF-8 (BOM
-optional). All three checks must pass. Anything else is rejected with 415, including files
-that decode perfectly well.
+optional). All three checks must pass. Anything else is rejected with 415, including files that
+decode perfectly well.
 
 **Implement exactly the two examples the ticket names** — current UTC date and a random
 character sequence — and record that as a choice. The values live in a `MutationContext`
-parameter rather than as literals inside the policy, so varying them is a value change. We do
-**not** add a seam on the content axis: "what data gets appended" varying is not a reason for
-an abstraction.
+parameter rather than as literals inside the policy.
 
-**Put format identity on the existing port.** `IFileMutator` gains `Format` and
-`MutationCapability`; `IFileMutatorRegistry` resolves filename + content-type to one adapter
-and returns a result — never a fallback — when no adapter matches.
+**Validate the whole upload before writing any response byte.** Read the request through a
+`Pipe` into pooled segments, run the acceptance rule over it, and only then write the response.
 
-`MutationCapability` is `Streaming` or `BufferedRewrite`. The plain-text adapter is
-`Streaming`.
+**The acceptance rule lives in `FileMutation.Application`** as a plain function over the content
+and its declared metadata, returning a result. It references no ASP.NET Core types. The API
+parses multipart, calls it, and maps the result to a status code — the API is an entry point to
+the rule, not its owner.
 
 ## Consequences
 
-**A second mutator port was considered and rejected.** An `IFileFormatMutator` alongside
-`IFileMutator` would have taken the same inputs and returned the same outputs, differing only
-in name. Format identity belongs on the port that already exists.
+**This is what makes 415 possible at all.** An earlier version of this design streamed mutated
+bytes to the response while still validating, then promised a `ProblemDetails` on failure. That
+cannot work: once a response byte is flushed the status line is committed, so a late rejection
+arrives as a truncated 200. Reading and deciding before writing is not merely tidier — it is the
+only ordering in which the stated error contract is achievable.
 
-**The registry has one entry today, and that is not a defect.** Every port in this solution
-has one adapter; that is what ports-and-adapters looks like. What the registry buys is that
-format resolution has one home and cannot silently fall back — an unmatched format is a
-rejection by construction, not by remembering to check.
+**Buffering is bounded, and it is not an LOH allocation.** The content is held in pooled `Pipe`
+segments, each far below the 85,000-byte large-object-heap threshold, so a 10 MB upload never
+produces a 10 MB array. Peak memory per request is bounded by the configured maximum upload
+size and returned to the pool afterwards. The honest claim is therefore *"no LOH allocation, and
+bounded pooled memory per request"* — not *"nothing is ever buffered"*.
 
-**`MutationCapability` makes the execution model explicit — but it is self-reported.** Nothing
-in the type system stops a buffering implementation declaring `Streaming`; it is a claim by the
-adapter, verified only by a test. Stronger designs exist (separate `IStreamingMutator` and
-`IBufferedMutator` contracts with different orchestration), and would be the right move if a
-second format ever arrives.
+**No registry, and no capability enum.** Both were dropped after review. With a single accepted
+format the registry restated the acceptance rule in a second place, and it pushed
+filename/content-type — HTTP-shaped metadata — into a domain port. `MutationCapability` was
+worse: self-reported metadata that nothing in the type system enforced, so an adapter could
+simply declare `Streaming` and buffer anyway. A claim verified by nothing is not a safeguard.
+Dispatch goes in when a second format actually exists, and if that format needs a different
+execution model it gets its own contract rather than an enum.
 
-A `.docx` adapter would need seekable storage or buffering. Note the weaker, accurate form of
-this: `ZipArchiveMode.Update` holds the archive in memory, and rewriting an OPC package through
-the OpenXML SDK needs random access — but that is a constraint of the chosen libraries, not a
-law of the ZIP format, since `ZipArchiveMode.Create` can write to a non-seekable stream. That breaks NFR-1 (no whole-file buffering) and NFR-3 (no LOH
-allocations — anything over ~85,000 bytes lands there), and `DocumentFormat.OpenXml` is
-unlikely to survive trimming under NFR-9. If every adapter presented a uniform interface, the
-"zero-allocation" claim would quietly become "zero-allocation for `.txt`" with nothing in the
-type system to say so. Declaring `BufferedRewrite` forces that admission.
+**`.docx` is specified and not built.** It would need seekable storage or buffering through the
+OpenXML SDK, which is disproportionate here, and it is not a text file, so it is outside the
+ticket. Note the accurate form: that is a constraint of the chosen libraries, not a law of the
+ZIP format — `ZipArchiveMode.Create` can write to a non-seekable stream.
 
-**`.docx` is therefore specified and not built.** It is also not a text file, so it is outside
-the ticket. See the PRD's out-of-scope table.
-
-**Validation cost.** Decoding must happen incrementally as segments arrive, which means
+**Validation cost.** Decoding still happens incrementally as segments arrive, which means
 carrying partial UTF-8 sequences across `ReadOnlySequence<byte>` segment boundaries. A decoder
 called per segment as though each were complete will reject valid files — and only those that
-happen to split a multi-byte character, so it passes casual testing.
+happen to split a multi-byte character, so it survives casual testing.
 
 **Widening the accepted set is a PRD change**, not an implementation decision.
 
@@ -85,5 +82,6 @@ happen to split a multi-byte character, so it passes casual testing.
 | Accept anything that decodes as text | Accepts `.json`/`.csv` and corrupts them while reporting success |
 | Accept any byte stream, append blindly | Corrupts UTF-16 silently; contradicts FR-6 |
 | BOM-aware suffix encoder (UTF-8/16 both accepted) | More correct across more inputs, but adds an encoder seam and branches for input the ticket never asked for — and UTF-16 without a BOM stays undetectable anyway |
-| No registry; `if` on extension at the endpoint | Works for one format, but puts format knowledge in the HTTP layer and makes a silent fallback the easy mistake |
+| A registry resolving filename + content-type to a mutator | Restates the acceptance rule in a second place and pushes HTTP-shaped metadata into a domain port, for a single format. Added when a second one exists |
+| Stream the response while validating | Cannot return 415 on a late failure — the status is already committed. This was the original design and it was wrong |
 | Build the `.docx` adapter too | Breaks NFR-1/NFR-3/NFR-9, exceeds the ~400 LOC PR limit, and mutates a non-text file the ticket never asked for |
