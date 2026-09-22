@@ -121,6 +121,48 @@ the operative summary, not a second copy of the reasoning):
 | `complexity-routing.md` | Complexity scale and model routing |
 | `work-classification.md` | `work_type` and WBSO candidate flagging |
 
+## Autonomy — act, then report
+
+**Problem**: an agent that asks permission for every mechanical step costs more attention than
+it saves, and the interruptions land on trivia — merging a green PR — rather than on the
+decisions that actually need a human. The result is a human rubber-stamping, which is worse
+than no gate at all because it looks like oversight.
+
+**Rule**: default to acting. Report in one line afterwards. Ask only when the action is on the
+stop list below.
+
+### Proceed without asking
+
+- Commit, push a branch, open or update a PR
+- **Merge a PR into `main` when CI is green and the DoD checklist is satisfied**
+- Delete a branch that has already been merged
+- Create, update or close issues, milestones, labels, sub-issue links, dependency links
+- Run the review passes and fix what they find
+- Write or update docs, ADRs, rules and task files
+- Refactors confined to the task in hand
+
+### Stop and ask
+
+- Force-push, rewriting published history, any `--force` on a shared ref
+- Deleting an issue, milestone, repository, or an **unmerged** branch
+- Changing branch protection or repository visibility
+- Anything that publishes beyond this repo — packages, releases, external services, email
+- Changing the licence, or adding a dependency with a commercial or copyleft licence
+- Anything that spends money
+- Writing a client identifier anywhere (see Confidentiality — this one has no exceptions)
+- Merging with CI red, or bypassing a required check with an admin override
+- Settling a question the PRD lists as open
+
+### When it is unclear
+
+Prefer the reversible action and report it, over asking. If one command undoes it, do it and
+say so. The stop list is short on purpose: everything on it is either irreversible, costs
+money, or leaks something. Nothing else qualifies.
+
+**Do not ask for a plan approval on mechanical work.** A plan is worth writing when the
+approach is genuinely contested; it is noise when the next step follows from the last merged
+PR and the task file already says what to build.
+
 ## Model routing
 
 **Sonnet is the default.** Every story carries `complexity: 1-5`, describing what the work
