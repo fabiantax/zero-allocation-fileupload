@@ -63,6 +63,20 @@ A `hooks/pre-commit` hook enforces this mechanically. Activate it once per clone
 git config core.hooksPath hooks
 ```
 
+## Autonomy
+
+Default to acting, then report in one line. Do not ask permission for mechanical steps —
+committing, pushing, opening a PR, or **merging a PR whose CI is green and whose DoD is
+satisfied**.
+
+Stop and ask only for: force-push or rewritten history; deleting an issue, milestone, repo or
+unmerged branch; changing branch protection or repo visibility; publishing outside this repo;
+licence changes or commercial/copyleft dependencies; spending money; writing a client
+identifier; merging with CI red; settling a PRD open question.
+
+When unclear, prefer the reversible action and report it rather than asking. Full list in
+`CLAUDE.md`.
+
 ## Workflow rules
 
 See `.claude/rules/github-workflow.md` for PR size, branch protection, issue traceability
