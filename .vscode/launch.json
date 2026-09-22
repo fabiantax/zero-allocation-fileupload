@@ -1,0 +1,48 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Mirrors the "https" profile in launchSettings.json: breakpoints hit,
+            // browser opens on the Scalar UI. Needs a dev cert (dotnet dev-certs https).
+            "name": "FileMutation.Api (https, debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/src/FileMutation.Api/bin/Debug/net10.0/FileMutation.Api.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/FileMutation.Api",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "ASPNETCORE_URLS": "https://localhost:7080;http://localhost:5080"
+            },
+            "serverReadyAction": {
+                "action": "openBrowser",
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+                "uriFormat": "%s/scalar"
+            }
+        },
+        {
+            // HTTP-only twin for when no dev cert is available.
+            "name": "FileMutation.Api (http, debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/src/FileMutation.Api/bin/Debug/net10.0/FileMutation.Api.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/FileMutation.Api",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "ASPNETCORE_URLS": "http://localhost:5080"
+            },
+            "serverReadyAction": {
+                "action": "openBrowser",
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+                "uriFormat": "%s/scalar"
+            }
+        }
+    ]
+}
