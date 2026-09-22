@@ -7,21 +7,24 @@ using FileMutation.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Scalar.AspNetCore;
-var builder = WebApplication.CreateSlimBuilder(args);
 
-// CreateSlimBuilder omits HTTPS wiring to keep the startup path small. Without this call, binding
-// any https:// address throws at startup — which no WebApplicationFactory test can catch, because
-// TestServer never binds a real socket. See docs/adr/0006-openapi-scalar.md.
+// --- Host -----------------------------------------------------------------
+
+// CreateSlimBuilder omits HTTPS wiring; without this call any https:// address throws at
+// startup — a failure no WebApplicationFactory test can catch (TestServer binds no socket).
+var builder = WebApplication.CreateSlimBuilder(args);
 builder.WebHost.UseKestrelHttpsConfiguration();
 
+// Fail at startup on DI misconfiguration (missing registrations, captive scopes).
 builder.Host.UseDefaultServiceProvider(options =>
 {
     options.ValidateOnBuild = true;
     options.ValidateScopes = true;
 });
 
-// Bound lazily rather than read here: configuration sources are still being composed at this
-// point, and an eager read cannot be overridden by a test host.
+// --- Configuration ----------------------------------------------------------
+
+// Bound lazily: an eager read here cannot be overridden by a test host.
 var uploadSection = builder.Configuration.GetSection("Upload");
 
 builder.Services.AddOptions<UploadLimits>()
@@ -31,27 +34,41 @@ builder.Services.AddOptions<UploadLimits>()
         "Upload size limits must be non-negative, with MaxFileBytes greater than zero.")
     .ValidateOnStart();
 
-// Kestrel's ceiling is the outer guard that refuses a request before it is read; the precise
-// per-file rule is enforced by the endpoint against the same configuration.
+// Outer guard: refuse a request before reading it. The precise per-file rule lives in the endpoint.
 builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestBodySize =
         checked(uploadSection.GetValue<long>("MaxFileBytes") + uploadSection.GetValue<long>("MaxRequestOverheadBytes")));
 
+// --- Error handling ---------------------------------------------------------
+
+// RFC 7807 bodies for unexpected exceptions; rejections are results, not exceptions.
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
+
+// --- Application services ---------------------------------------------------
+
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddFileMutationInfrastructure();
-builder.Services.AddSingleton<SingleFileMutationService>();
+
+// Scoped, not singleton: it is stateless today, but scoped survives the next per-request
+// dependency added (a DbContext would be captive in a singleton). See .claude/rules/dotnet-conventions.md.
+builder.Services.AddScoped<SingleFileMutationService>();
+
+// --- OpenAPI + JSON ---------------------------------------------------------
+
+// Source-generated serialization for ProblemDetails; reflection JSON is AOT-hostile.
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonSerializerContext.Default));
 builder.Services.AddOpenApi();
 
+// --- Minimal API pipeline ---------------------------------------------------
+
 var app = builder.Build();
 
-app.MapOpenApi();
-app.MapScalarApiReference();
-app.UseExceptionHandler();
-app.MapFileMutateEndpoint();
+app.MapOpenApi();                 // /openapi/v1.json — the machine contract
+app.MapScalarApiReference();      // /scalar — the browser UI
+app.UseExceptionHandler();        // last-chance handler for unexpected faults
+app.MapFileMutateEndpoint();      // POST /files/mutate
 
 await app.RunAsync();
 
