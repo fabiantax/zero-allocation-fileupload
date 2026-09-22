@@ -8,6 +8,11 @@ using Microsoft.AspNetCore.Mvc;
 using Scalar.AspNetCore;
 var builder = WebApplication.CreateSlimBuilder(args);
 
+// CreateSlimBuilder omits HTTPS wiring to keep the startup path small. Without this call, binding
+// any https:// address throws at startup — which no WebApplicationFactory test can catch, because
+// TestServer never binds a real socket. See docs/adr/0006-openapi-scalar.md.
+builder.WebHost.UseKestrelHttpsConfiguration();
+
 builder.Host.UseDefaultServiceProvider(options =>
 {
     options.ValidateOnBuild = true;
