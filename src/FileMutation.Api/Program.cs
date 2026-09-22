@@ -10,8 +10,8 @@ using Scalar.AspNetCore;
 
 // --- Host -----------------------------------------------------------------
 
-// CreateSlimBuilder omits HTTPS wiring; without this call any https:// address throws at
-// startup — a failure no WebApplicationFactory test can catch (TestServer binds no socket).
+// Slim hosting does not configure HTTPS automatically. Configure it explicitly so an HTTPS
+// address starts successfully; TestServer cannot detect this because it never binds a socket.
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.WebHost.UseKestrelHttpsConfiguration();
 
@@ -24,20 +24,21 @@ builder.Host.UseDefaultServiceProvider(options =>
 
 // --- Configuration ----------------------------------------------------------
 
-// Bound lazily: an eager read here cannot be overridden by a test host.
 var uploadSection = builder.Configuration.GetSection("Upload");
+var uploadLimits = new UploadLimits();
+uploadSection.Bind(uploadLimits);
 
 builder.Services.AddOptions<UploadLimits>()
     .Bind(uploadSection)
     .Validate(
         limits => limits.MaxFileBytes > 0 && limits.MaxRequestOverheadBytes >= 0,
-        "Upload size limits must be non-negative, with MaxFileBytes greater than zero.")
+        "MaxFileBytes must be greater than zero and MaxRequestOverheadBytes must be non-negative.")
     .ValidateOnStart();
 
 // Outer guard: refuse a request before reading it. The precise per-file rule lives in the endpoint.
 builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestBodySize =
-        checked(uploadSection.GetValue<long>("MaxFileBytes") + uploadSection.GetValue<long>("MaxRequestOverheadBytes")));
+        checked(uploadLimits.MaxFileBytes + uploadLimits.MaxRequestOverheadBytes));
 
 // --- Error handling ---------------------------------------------------------
 

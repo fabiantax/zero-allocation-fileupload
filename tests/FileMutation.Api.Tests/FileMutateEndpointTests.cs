@@ -5,10 +5,13 @@ using System.Text.Json;
 using FileMutation.Api.Contracts;
 using FileMutation.Domain.Ports;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace FileMutation.Api.Tests;
@@ -182,6 +185,44 @@ public sealed class FileMutateEndpointTests(FileMutationApiFactory factory) : IC
         using var response = await PostAsync(content);
 
         await AssertProblemAsync(response, HttpStatusCode.RequestEntityTooLarge);
+    }
+
+    [Fact]
+    public async Task Upload_section_absent_uses_class_defaults_for_transport_and_endpoint()
+    {
+        using var defaultLimitsFactory = new FileMutationApiFactory(addTestUploadOverrides: false);
+        using var client = CreateClient(defaultLimitsFactory);
+        var kestrelLimits = defaultLimitsFactory.Services
+            .GetRequiredService<IOptions<KestrelServerOptions>>()
+            .Value
+            .Limits;
+        using var content = CreateUpload(
+            new byte[(10 * 1024 * 1024) - 1],
+            "below-default-limit.txt",
+            "text/plain");
+
+        Assert.Equal((10 * 1024 * 1024) + (64 * 1024), kestrelLimits.MaxRequestBodySize);
+
+        using var response = await client.PostAsync("/files/mutate", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public void Out_of_range_upload_limits_name_both_limit_properties()
+    {
+        using var invalidLimitsFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, configuration) =>
+                configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Upload:MaxFileBytes"] = "0",
+                    ["Upload:MaxRequestOverheadBytes"] = "0"
+                })));
+
+        var exception = Assert.Throws<OptionsValidationException>(invalidLimitsFactory.CreateClient);
+
+        Assert.Contains("MaxFileBytes", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("MaxRequestOverheadBytes", exception.Message, StringComparison.Ordinal);
     }
 
     [Theory]

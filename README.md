@@ -44,7 +44,11 @@ The accepted input must satisfy all three rules:
 - its multipart content type is `text/plain`; and
 - its complete content is valid UTF-8.
 
-The default maximum file size is 10 MiB. A command-line round trip is:
+The default maximum file size is 10 MiB, plus 64 KiB for multipart framing. To override either
+limit, add `Upload:MaxFileBytes` and/or `Upload:MaxRequestOverheadBytes` to configuration (such
+as `appsettings.json`); omitting either value uses the code default.
+
+A command-line round trip is:
 
 ```bash
 curl --fail-with-body \
