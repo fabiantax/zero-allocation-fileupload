@@ -128,6 +128,22 @@ git config core.hooksPath hooks
 The hook enforces issue traceability and prevents client-identifying terms from entering this
 public repository. Run the build and tests before submitting a change.
 
+## Test coverage
+
+CI gates **branch** coverage at **80%**. The per-suite Cobertura reports are merged with
+ReportGenerator; source-generated code (`**/obj/**`) and the test-support project
+`FileMutation.TestCommon` are kept out of the denominator, because neither is product
+behaviour. The full HTML report is published as a `coverage-report` artifact on every CI run.
+
+```bash
+dotnet test FileMutation.sln --collect:"XPlat Code Coverage" --results-directory artifacts/coverage
+reportgenerator "-reports:artifacts/coverage/**/coverage.cobertura.xml" "-targetdir:artifacts/coverage-report" "-reporttypes:Html" "-filefilters:-**/obj/**" "-assemblyfilters:-FileMutation.TestCommon"
+```
+
+On a sandboxed macOS runner, prefix `dotnet` with `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false`
+(see [`docs/adr/0001-native-aot.md`](docs/adr/0001-native-aot.md)); host configuration reload
+stalls startup there.
+
 ## Reproducing the benchmarks
 
 Run `dotnet run -c Release --project benchmarks/FileMutation.Benchmarks` from the repository
