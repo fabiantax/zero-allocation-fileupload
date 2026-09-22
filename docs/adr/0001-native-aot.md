@@ -2,16 +2,16 @@
 
 ## Status
 
-**Proven, parked** — feasibility was demonstrated on 2026-09-22, but Native AOT is deliberately
-not enabled in any project or in CI.
+**Proven, parked** — feasibility was demonstrated on 2026-09-22, but Native AOT is not enabled in
+any project or in CI.
 
 ## Context
 
 Native AOT was the riskiest compatibility question because the service also needs generated
 OpenAPI, a browser UI, and JSON error responses. The feasibility spike therefore tested the
 actual package stack before feature work depended on it. The original spike decision was to
-adopt AOT; the later implementation PR parked it on scope grounds. That chronology is recorded
-in the [decision log](../decision-log.md#21-native-aot) and in merged PR #21 (`b5d7d8f`).
+adopt AOT; the later implementation parked it on scope grounds. The [decision log](../decision-log.md)
+records that chronology.
 
 The spike used SDK `10.0.301`, `net10.0`, `Microsoft.AspNetCore.OpenApi` `10.0.12`,
 `Scalar.AspNetCore` `2.17.8`, `WebApplication.CreateSlimBuilder`, source-generated JSON metadata,
@@ -36,8 +36,8 @@ Two corrections matter. The spike report originally named SDK `10.0.401`; verifi
 that version was not installed, and both this record and CI were corrected to `10.0.301`. An
 earlier revision also blamed AOT for a five-minute build. Removing `PublishAot` did not remove
 the delay: sandboxed MSBuild worker-node communication was timing out. `-nodeReuse:false` fixed
-the build. The incident therefore provides no evidence that AOT caused the delay. Both
-corrections are recorded in PR #21 and commit `b5d7d8f`.
+the build. The incident therefore provides no evidence that AOT caused the delay. The
+[decision log](../decision-log.md) records both corrections.
 
 The restricted spike runner needed `DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false` to let the
 published process bind a socket. No reflection-enabling switch was used.

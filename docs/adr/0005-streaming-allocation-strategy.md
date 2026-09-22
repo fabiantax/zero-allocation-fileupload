@@ -2,18 +2,17 @@
 
 ## Status
 
-**Accepted** — 2026-09-22.
+**Accepted**: 2026-09-22.
 
 ## Context
 
 UTF-8 validity can be known only after the entire upload has been read, while an HTTP 415 can be
 chosen only before response bytes commit the status line. The independent
 design review of 2026-09-22 found the original interleaved
-read/write design could produce only a truncated 200 on a late validation failure. PR #19
-(`4516930`) therefore established a two-phase order and corrected the allocation claim. PR #23
-(`15c711c`) implemented pooled 16 KiB pipeline segments; PR #24 (`4a59553`) implemented the
-two-phase endpoint, explicit selected-part byte counting, and a deliberately chunked response.
-The reasoning is also recorded in the [decision log](../decision-log.md#210-streaming-async-and-what-zero-allocation-actually-claims).
+read/write design could produce only a truncated 200 on a late validation failure. The resulting
+two-phase order corrected the allocation claim. Pooled 16 KiB pipeline segments, the two-phase
+endpoint, explicit selected-part byte counting, and a chunked response followed. The reasoning is
+also recorded in the [decision log](../decision-log.md).
 
 ## Decision
 
@@ -42,16 +41,16 @@ are enforced during reading.
   threshold.
 - A valid response starts only after the full upload has arrived and been validated, increasing
   time-to-first-byte compared with interleaved streaming.
-- The upload is buffered—using pooled segments—for the duration of validation. Concurrent maximum-
+- The upload is buffered (using pooled segments) for the duration of validation. Concurrent maximum-
   size uploads therefore create bounded but still material pool pressure.
 - Chunked transfer gives up `Content-Length`, which can make progress reporting and some proxy
   behaviors less convenient.
 - Once phase 2 starts, a mutation or transport failure cannot be replaced by `ProblemDetails`;
   the connection may terminate after a partial successful response.
 - Pipelines and explicit ownership/completion are more complex than `ReadAllBytesAsync`.
-- The allocation claim is now measured rather than inferred. PR #26 recorded 784 B per operation
+- The allocation claim is now measured rather than inferred. The benchmark recorded 784 B per operation
   at 1 KB and 256 KB and 792 B at 10 MB, against 20,971,880 B and Gen2 collections for a naive
-  `ReadAllBytes` baseline — see [the benchmark results](../benchmarks/allocation-results.md).
+  `ReadAllBytes` baseline. See [the benchmark results](../benchmarks/allocation-results.md).
   The same run shows the cost: below roughly 256 KB the pipeline is *slower* than the naive path
   (2.58x at 1 KB), so this design is chosen for uploads near the configured ceiling, not for
   small ones.

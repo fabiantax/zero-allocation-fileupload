@@ -11,10 +11,9 @@ The operation returns transformed bytes synchronously and has no requirement to 
 later. An early design retained `IFileRepository` so storage could supposedly be added by swapping
 an adapter. The independent design review of 2026-09-22
 identified the contradiction: a required repository dependency is not optional, while an unused
-one is speculative scaffolding. The [decision log](../decision-log.md#15-everything-else-that-was-deliberately-not-built)
-records the correction, and PR #18 (`0f6d7af`) answered OQ-1, removed the repository and disk
-adapter, and deleted the persistence task. No storage abstraction or implementation exists in the
-current code.
+one is speculative scaffolding. The [decision log](../decision-log.md) records the correction:
+OQ-1 was answered, the repository and disk adapter were removed, and the persistence task was
+deleted. No storage abstraction or implementation exists in the current code.
 
 ## Decision
 
@@ -39,7 +38,7 @@ audit record is durable. Those choices cannot be encoded honestly in a generic r
 - There is no durable audit evidence. This service is unsuitable for a regulated workflow until
   the audit question is answered and implemented.
 - A later persistence requirement will require a real design change rather than an adapter swap.
-  That flexibility is deliberately given up because the missing semantics—not the storage API—are
+  That flexibility is given up because the missing semantics—not the storage API—are
   the hard part.
 - Avoiding disk also means the maximum accepted upload must fit within the configured per-request
   pooled-memory bound.

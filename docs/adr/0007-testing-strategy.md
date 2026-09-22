@@ -33,5 +33,5 @@ on a quiet machine.
 - Branch coverage makes untested decision paths more visible than line coverage.
 - The 80% aggregate is not proof of correct behavior; important paths still require named tests,
   and generated or trivial code can distort the percentage.
-- Benchmarks are deliberately not part of the default test/coverage gate, so allocation regressions
+- Benchmarks are not part of the default test/coverage gate, so allocation regressions
   are not caught unless the benchmark workflow is run and compared under controlled conditions.

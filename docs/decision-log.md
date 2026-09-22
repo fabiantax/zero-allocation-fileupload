@@ -38,7 +38,8 @@ I traced persistence, audit, OpenTelemetry, authentication, rate limiting, queue
 queries, GDPR handling, and BDD tooling back to requirements the ticket does not state. I removed
 the speculative `IFileRepository` port in particular, because a port with no consumer is
 scaffolding that still has to be wired, tested, and explained. The seam can return when a second
-requirement exists, not before.
+requirement exists, not before. PR #18 (`0f6d7af`) removed the repository and disk adapter, and
+PR #24 (`4a59553`) deleted `IMutateFileUseCase` because nothing implemented or called it.
 
 ### Upload limits
 
@@ -58,7 +59,8 @@ I settled Native AOT with a one-hour publish spike before the skeleton, rather t
 abstractly or fold the unknown into the task every later task depended on. I accepted per-RID
 output, slower publishing, and a worse debugging story in exchange for reflection-free code and
 bounded allocation pulling in the same direction. The spike made “no” an acceptable result before
-the package choice became load-bearing.
+the package choice became load-bearing. PR #21 (`b5d7d8f`) records the spike corrections and the
+later decision to park AOT.
 
 ### An OpenAPI UI without Swashbuckle
 
@@ -81,7 +83,7 @@ require different tooling or explicit document transformers.
 
 ### A value object, not a ceremonial aggregate
 
-I modelled the filename as a `FileName` value object and deliberately created no `UploadedFile`
+I modelled the filename as a `FileName` value object and created no `UploadedFile`
 aggregate. I considered the more ceremonious DDD shape, but this stateless transformation has no
 identity, lifecycle, or cross-entity invariant to protect. An aggregate would add ceremony
 without protecting a rule, so I chose restraint as the DDD answer.
@@ -104,7 +106,9 @@ be called by a unit test or console application without ASP.NET Core types. I re
 endpoint-local validation, a second acceptance policy, a mutator registry, and capability
 metadata because each duplicated the rule or trusted an unverified claim. I kept
 `SingleFileMutationService` as one direct, constructor-injected transformation around those
-existing streams and result types rather than wrap it in a command shell.
+existing streams and result types rather than wrap it in a command shell. PR #23 (`15c711c`)
+implemented the pooled 16 KiB pipeline segments; PR #24 (`4a59553`) implemented the two-phase
+endpoint and selected-part byte count; and PR #26 recorded the allocation benchmark results.
 
 ### No mediator
 
@@ -115,7 +119,10 @@ divergence to manage. MediatR adds licence review and third-party dependency cos
 hand-rolled dispatcher creates code this repository would own for one call site, and Wolverine
 brings a framework-sized host for local invocation. I kept direct constructor-injected
 composition and recorded the comparison in ADR-0002 so the negative decision is evidence rather
-than an unexamined default.
+than an unexamined default. Issue #15 closed the implementation variant as not planned; issue #31
+remains a direct, constructor-injected file-processing service rather than a dispatcher. PR #19
+(`4516930`) removed dispatch and established the two-phase order that corrected the allocation
+claim.
 
 ### Native seams
 
