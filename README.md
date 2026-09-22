@@ -141,6 +141,7 @@ reasoning on a dedicated page: [docs/assumptions.md](docs/assumptions.md). In sh
 | System structure and request flow | [Architecture](docs/architecture.md) |
 | Scope, deliberate exclusions, and accepted formats | [Assumptions](docs/assumptions.md) |
 | Native AOT: proven, then parked | [ADR 0001](docs/adr/0001-native-aot.md) |
+| CQRS: evaluated against MediatR, Wolverine, and a hand-rolled dispatcher; none adopted — deliberate YAGNI for a single use case | [ADR 0002](docs/adr/0002-cqrs-mediator-choice.md) |
 | Four-project structure, ports, and no aggregate root | [ADR 0004](docs/adr/0004-solution-structure-ddd-ports.md) |
 | Streaming, buffering, and the allocation claim | [ADR 0005](docs/adr/0005-streaming-allocation-strategy.md) |
 | Built-in OpenAPI plus Scalar | [Decision log](docs/decision-log.md#an-openapi-ui-without-swashbuckle) |
