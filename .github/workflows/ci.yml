@@ -15,7 +15,34 @@ jobs:
         with:
           dotnet-version: 10.0.301
       - run: dotnet build --configuration Release
-      - run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
+      - run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage"
+
+      # A WebApplicationFactory test never binds a real socket, so it cannot catch a host that
+      # fails to start. This starts the real Kestrel host on an https address and fetches the
+      # OpenAPI document. It exists because that exact failure reached a developer's F5:
+      # CreateSlimBuilder omits HTTPS wiring, and binding https:// threw at startup.
+      - name: Smoke test the real host over HTTPS
+        run: |
+          dotnet dev-certs https
+          dotnet run --project src/FileMutation.Api --configuration Release --no-build --no-launch-profile &
+          APP_PID=$!
+          trap "kill $APP_PID 2>/dev/null || true" EXIT
+          for i in $(seq 1 30); do
+            if curl -fsSk https://localhost:7080/openapi/v1.json -o /dev/null; then
+              echo "host started and served the OpenAPI document over https"
+              exit 0
+            fi
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "::error::the API host exited during startup"
+              wait $APP_PID
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "::error::the API host never served https://localhost:7080/openapi/v1.json"
+          exit 1
+        env:
+          ASPNETCORE_URLS: https://localhost:7080 --results-directory TestResults
       - name: Enforce branch coverage threshold
         shell: pwsh
         run: |
