@@ -438,3 +438,6 @@ CLAUDE.local.md
 
 # Client-supplied assignment text — never committed (see CLAUDE.md)
 ASSIGNMENT.md
+
+# Local dev convenience, not part of the deliverable — references /tmp/claude job logs
+scripts/status.sh
