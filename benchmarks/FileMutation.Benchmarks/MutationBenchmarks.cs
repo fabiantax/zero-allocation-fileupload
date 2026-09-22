@@ -3,6 +3,7 @@ using BenchmarkDotNet.Running;
 using FileMutation.Domain;
 using FileMutation.Domain.Ports;
 using FileMutation.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 BenchmarkRunner.Run<MutationBenchmarks>();
 
@@ -11,9 +12,15 @@ BenchmarkRunner.Run<MutationBenchmarks>();
 public class MutationBenchmarks
 {
     private const int SuffixLength = 28;
+    private const int RandomSequenceLength = 16;
     private static readonly DateTimeOffset Timestamp = new(2026, 9, 22, 0, 0, 0, TimeSpan.Zero);
     private static readonly IRandomSequenceGenerator RandomSequenceGenerator = new FixedRandomSequenceGenerator();
-    private static readonly DateAndRandomSequenceMutator Mutator = new(new FixedTimeProvider(), RandomSequenceGenerator);
+    private static readonly IFileMutator Mutator = new ServiceCollection()
+        .AddSingleton<TimeProvider>(new FixedTimeProvider())
+        .AddSingleton<IRandomSequenceGenerator>(RandomSequenceGenerator)
+        .AddFileMutationInfrastructure()
+        .BuildServiceProvider()
+        .GetRequiredService<IFileMutator>();
     private byte[] _source = [];
 
     /// <summary>Gets or sets the number of source bytes for the current benchmark case.</summary>
@@ -52,7 +59,7 @@ public class MutationBenchmarks
 
     private static void AppendSuffix(Span<byte> destination)
     {
-        Span<char> randomSequence = stackalloc char[DateAndRandomSequenceMutator.RandomSequenceLength];
+        Span<char> randomSequence = stackalloc char[RandomSequenceLength];
         RandomSequenceGenerator.Fill(randomSequence);
         var context = new MutationContext(Timestamp, randomSequence);
         _ = MutationPolicy.TryWriteSuffix(destination, in context, out _);

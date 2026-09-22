@@ -6,7 +6,7 @@ namespace FileMutation.Infrastructure;
 /// <summary>
 /// Fills a sequence with cryptographically strong characters drawn from an unambiguous alphabet.
 /// </summary>
-public sealed class CryptoRandomSequenceGenerator : IRandomSequenceGenerator
+internal sealed class CryptoRandomSequenceGenerator : IRandomSequenceGenerator
 {
     // Excludes 0/O and 1/I/l so a sequence survives being read aloud or retyped.
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";

@@ -9,7 +9,7 @@ namespace FileMutation.Infrastructure;
 /// Streams a file unchanged, then appends <c>\nyyyy-MM-dd:sequence</c> using the domain policy.
 /// See <see href="../../docs/adr/0005-streaming-allocation-strategy.md">ADR 0005</see>.
 /// </summary>
-public sealed class DateAndRandomSequenceMutator : IFileMutator
+internal sealed class DateAndRandomSequenceMutator : IFileMutator
 {
     private const int PipeSegmentSize = 16 * 1024;
 
@@ -23,23 +23,15 @@ public sealed class DateAndRandomSequenceMutator : IFileMutator
     /// <summary>Creates a streaming mutator with injected sources of time and randomness.</summary>
     public DateAndRandomSequenceMutator(
         TimeProvider timeProvider,
-        IRandomSequenceGenerator randomSequenceGenerator)
-        : this(timeProvider, randomSequenceGenerator, MemoryPool<byte>.Shared)
-    {
-    }
-
-    internal DateAndRandomSequenceMutator(
-        TimeProvider timeProvider,
         IRandomSequenceGenerator randomSequenceGenerator,
-        MemoryPool<byte> memoryPool)
+        MemoryPool<byte>? memoryPool = null)
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(randomSequenceGenerator);
-        ArgumentNullException.ThrowIfNull(memoryPool);
 
         _timeProvider = timeProvider;
         _randomSequenceGenerator = randomSequenceGenerator;
-        _memoryPool = memoryPool;
+        _memoryPool = memoryPool ?? MemoryPool<byte>.Shared;
     }
 
     /// <summary>Copies <paramref name="source"/> asynchronously and appends the mutation suffix.</summary>
