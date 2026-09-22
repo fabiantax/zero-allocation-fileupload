@@ -48,12 +48,12 @@ builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 
 // --- Application services ---------------------------------------------------
 
+// Singleton: stateless infra leaves (clock, randomness, adapters) — all three ladder conditions hold.
+// Scoped: survives the next per-request dependency added (a DbContext would be captive in a
+// singleton). Ladder details: .claude/rules/dotnet-conventions.md.
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddFileMutationInfrastructure();
-
-// Scoped, not singleton: it is stateless today, but scoped survives the next per-request
-// dependency added (a DbContext would be captive in a singleton). See .claude/rules/dotnet-conventions.md.
-builder.Services.AddScoped<SingleFileMutationService>();
+builder.Services.AddScoped<ISingleFileMutationService, SingleFileMutationService>();
 
 // --- OpenAPI + JSON ---------------------------------------------------------
 
@@ -73,12 +73,18 @@ app.MapFileMutateEndpoint();      // POST /files/mutate
 
 await app.RunAsync();
 
+// Source-generated JSON metadata for ProblemDetails, so error bodies serialize without reflection
+// (reflection JSON breaks native AOT — ADR-0001). It lives here, beside its only wiring point:
+// ConfigureHttpJsonOptions above inserts this context into the resolver chain.
 namespace FileMutation.Api
 {
     [JsonSerializable(typeof(ProblemDetails))]
     internal partial class ApiJsonSerializerContext : JsonSerializerContext;
 }
 
+// Top-level statements make the compiler synthesize an internal Program class; this partial
+// declaration makes it public so WebApplicationFactory<Program> can boot the real app in the
+// integration tests. The protected constructor keeps it entry-point-only — it runs, it is never newed.
 /// <summary>
 /// Provides the application entry point used by the host and integration-test factory.
 /// See <see href="../../docs/decision-log.md#an-openapi-ui-without-swashbuckle">the OpenAPI decision</see>.

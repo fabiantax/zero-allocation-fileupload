@@ -41,7 +41,7 @@ internal static class FileMutateEndpoint
 
     private static async Task<IResult> ExecuteAsync(
         HttpContext httpContext,
-        SingleFileMutationService fileMutationService,
+        ISingleFileMutationService fileMutationService,
         IOptions<UploadLimits> uploadLimits,
         CancellationToken cancellationToken)
     {
