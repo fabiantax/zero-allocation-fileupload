@@ -91,7 +91,8 @@ existing port instead of adding a parallel one.
 
 Persistence beyond the local-disk adapter, audit trails, OpenTelemetry, authentication,
 rate limiting, queue ingestion, Azure Blob storage, file query/delete endpoints, GDPR/PII
-handling, Gherkin tests. Each was decided deliberately; see the PRD's out-of-scope table.
+handling, Gherkin tests, Stryker mutation testing. Each was decided deliberately; see the
+PRD's out-of-scope table.
 
 If a task seems to need one of these, stop and ask — do not implement it.
 
