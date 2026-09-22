@@ -62,10 +62,22 @@ the package choice became load-bearing.
 
 ### An OpenAPI UI without Swashbuckle
 
-I chose built-in `Microsoft.AspNetCore.OpenApi` plus `Scalar.AspNetCore` for the required browser
-UI rather than Swashbuckle. Swashbuckle’s reflection conflicts with trimming and AOT, while
-Scalar’s static shell still fetches the document and supports upload. I present that literal
-“Swagger UI” deviation as a decision, not an oversight.
+Generate the document with the .NET 10 built-in `Microsoft.AspNetCore.OpenApi` package and serve
+the interactive browser client with `Scalar.AspNetCore`. Keep source-generated System.Text.Json
+metadata for application JSON types. Expose the document at `/openapi/v1.json` and the UI at
+`/scalar/v1`.
+
+Do not add Swashbuckle. Scalar satisfies the user-facing requirement—a browser can inspect and
+invoke the multipart endpoint—without making the product name “Swagger” the architecture. The
+choice remains after AOT was parked because it is already proven, uses the platform document
+generator, and no requirement justifies a second OpenAPI stack.
+
+The consequences are accepted: built-in document generation reduces reliance on reflection
+metadata and preserves an easier route back to Native AOT; this is a deliberate literal
+deviation from “Swagger UI”; Scalar remains a third-party dependency whose upgrades must be
+checked against both the document and the interactive upload/download flow; and the chosen stack
+gives up the mature Swashbuckle extension ecosystem, so a future customization requirement may
+require different tooling or explicit document transformers.
 
 ### A value object, not a ceremonial aggregate
 
