@@ -16,12 +16,45 @@ jobs:
           dotnet-version: 10.0.301
       - run: dotnet build --configuration Release
       - run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      # Merges the per-test-project Cobertura reports into one, then gates on BRANCH
+      # coverage (never the line figure). Two deliberate scope rules:
+      #   - **/obj/** keeps source-generated code (STJ metadata, OpenAPI comment support)
+      #     out of the denominator - it is build output, not hand-written behaviour.
+      #   - FileMutation.TestCommon is test-support code, not product code.
+      # The empty-report check exists because a silently-detached coverlet collector
+      # produces a file with 0 branches, which would otherwise pass any threshold.
+      - run: dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.4
       - name: Enforce branch coverage threshold
         shell: pwsh
         run: |
-          $coverageFile = Get-ChildItem TestResults -Filter coverage.cobertura.xml -Recurse | Select-Object -First 1
-          if ($null -eq $coverageFile) { throw "No Cobertura coverage report was produced." }
-          [xml]$coverage = Get-Content $coverageFile.FullName
-          $branchCoverage = [double]$coverage.coverage.'branch-rate' * 100
-          Write-Host "Branch coverage: $branchCoverage% (threshold: 0%)"
-          if ($branchCoverage -lt 0) { throw "Branch coverage is below the 0% threshold." }
+          $coverageFiles = Get-ChildItem TestResults -Filter coverage.cobertura.xml -Recurse
+          if ($coverageFiles.Count -eq 0) {
+            throw "No Cobertura coverage report was produced by the test run."
+          }
+          reportgenerator `
+            "-reports:$($coverageFiles.FullName -join ';')" `
+            "-targetdir:coveragereport" `
+            "-reporttypes:Cobertura;Html" `
+            "-filefilters:-**/obj/**" `
+            "-assemblyfilters:-FileMutation.TestCommon" `
+            -verbosity:Warning
+          [xml]$coverage = Get-Content coveragereport/Cobertura.xml
+          $branchTotal = [int]$coverage.coverage.'branches-valid'
+          $branchCovered = [int]$coverage.coverage.'branches-covered'
+          if ($branchTotal -eq 0) {
+            throw "Coverage report contains 0 total branches - the collector is not attached and the gate refuses to pass on an empty report."
+          }
+          $threshold = 80
+          $branchCoverage = 100.0 * $branchCovered / $branchTotal
+          Write-Host ("Branch coverage: {0:N2}% ({1}/{2} branch points, threshold {3}%)" -f $branchCoverage, $branchCovered, $branchTotal, $threshold)
+          if ($branchCoverage -lt $threshold) {
+            throw "Branch coverage is $([math]::Round($branchCoverage, 2))%, below the $threshold% threshold."
+          }
+
+      - name: Publish coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coveragereport
+          if-no-files-found: error
