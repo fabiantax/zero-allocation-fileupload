@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Diagnostics.CodeAnalysis;
 
 namespace FileMutation.Domain;
@@ -52,12 +53,9 @@ public sealed record FileName
             return false;
         }
 
-        foreach (var character in sanitized)
+        if (sanitized.Any(static character => character is '/' or '\\' || char.IsControl(character)))
         {
-            if (character is '/' or '\\' || char.IsControl(character))
-            {
-                return false;
-            }
+            return false;
         }
 
         return true;
