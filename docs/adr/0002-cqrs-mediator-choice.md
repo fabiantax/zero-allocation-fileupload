@@ -148,6 +148,23 @@ messaging, error policies, and persisted orchestration state. That is not a medi
 anymore; it is an orchestration engine, and it is justified by workflow requirements
 (spans systems, survives restarts, needs compensation), never by request count alone.
 
+**Events are the same arithmetic.** A mediator also offers publish/subscribe: a handler
+publishes a domain event and any number of subscribers react. Today this API has zero
+subscribers, so publishing a `FileMutated` event would be code whose only output is
+silence. Events earn their keep the moment a real listener exists, and no sooner.
+
+**What that would look like for this domain, concretely.** Suppose the API grows into
+the shared file-processing platform the PRD anticipates. A downstream system starts
+consuming mutated files as a pipeline stage: it listens for `FileMutated` and fetches or
+processes the result. Files begin landing in object storage behind a CDN, and a stale
+cached copy after a mutation becomes a correctness bug, so a subscriber invalidates the
+CDN keys for that filename on every event. A search indexer re-indexes on the same
+event. At that point there are also more commands (fetch, list, delete) sharing
+validation and audit logging, which is exactly the pipeline-behavior shape above: one
+`AuditLoggingBehavior` and one `IdempotencyBehavior` wrap every handler instead of being
+repeated per service. None of that is hypothetical architecture to build now; it is the
+picture that tells a reviewer the dismissal is informed rather than reflexive.
+
 **The costs scale too.** Every benefit above is an indirection: stack traces pass
 through the dispatcher, behavior ordering becomes architecture that someone must own,
 and the dependency brings its licence and upgrade lifecycle. A large solution that
@@ -155,7 +172,8 @@ adopts a mediator without the triggering shape pays the costs and receives a
 convention it never uses.
 
 **Triggers that would reopen this ADR for this codebase:** a third command sharing
-concerns with the first two; a read model that evolves independently of the write path
+concerns with the first two; the first real event subscriber (a CDN invalidator, a
+pipeline stage, an indexer); a read model that evolves independently of the write path
 (actual CQRS, not the buzzword); or a durable, multi-step workflow requirement. Absent
 one of those, direct composition stays the right answer at any code quality bar.
 
