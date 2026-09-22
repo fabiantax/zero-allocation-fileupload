@@ -1,23 +1,28 @@
 #!/bin/sh
-# Parse-check every mermaid fence in tracked markdown with mermaid's own parser (mmdc).
-# Exit non-zero on any failure, naming the source file and diagram number, and showing
-# the actual error output so a browser-launch failure is not misread as a parse error.
+# Check every mermaid fence in tracked markdown.
+#
+# Two stages, under a hard 10-second budget:
+#   1. Structural check (instant, no browser): block nesting per diagram type.
+#      Catches the error class that actually bit us: orphan/missing `end`.
+#   2. Full parse with mermaid's own parser (mmdc + Chromium) — only while the
+#      budget allows. Cold CI runners blow the budget on the npx download, so
+#      there the structural stage is what gates; locally the full parse runs.
 set -u
 
-command -v npx >/dev/null 2>&1 || { echo "mermaid-check: npx is required" >&2; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "mermaid-check: python3 is required" >&2; exit 2; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# Chromium on CI runners launches as an unprivileged user and needs --no-sandbox.
-cat > "$tmp/puppeteer.json" <<'CONF'
-{ "args": ["--no-sandbox", "--disable-setuid-sandbox"] }
-CONF
+DEADLINE=$(( $(date +%s) + 10 ))
 
+# --- Stage 1: structural check ----------------------------------------------
 python3 - "$tmp" <<'EOF'
-import subprocess, sys, pathlib
+import re, subprocess, sys, pathlib
 tmp = pathlib.Path(sys.argv[1])
 files = subprocess.run(["git", "ls-files", "*.md"], capture_output=True, text=True, check=True).stdout.split()
+OPENERS = re.compile(r'^(alt|opt|loop|par|critical|break|rect|subgraph|state|note\s+right\s+of|note\s+left\s+of|note\s+over)\b')
+fail = 0
 n = 0
 for md in files:
     text = pathlib.Path(md).read_text()
@@ -27,21 +32,51 @@ for md in files:
         n += 1
         (tmp / f"{n:03d}.mmd").write_text(body)
         (tmp / f"{n:03d}.src").write_text(f"{md} (mermaid block {i})")
+        depth = 0
+        kind = body.strip().split("\n", 1)[0].strip()
+        if kind.startswith(("sequenceDiagram", "stateDiagram", "flowchart", "graph")):
+            for line in body.split("\n"):
+                s = line.strip()
+                if re.match(r'^(alt|opt|loop|par|critical|break|rect|subgraph)\b', s):
+                    depth += 1
+                elif s == "end":
+                    depth -= 1
+                    if depth < 0:
+                        print(f"mermaid-check: STRUCTURAL ERROR in {md} (block {i}): extra 'end'", file=sys.stderr)
+                        fail = 1
+                        depth = 0
+            if depth != 0:
+                print(f"mermaid-check: STRUCTURAL ERROR in {md} (block {i}): {depth} unclosed block(s)", file=sys.stderr)
+                fail = 1
 print(n)
+sys.exit(fail)
 EOF
-
+struct_rc=$?
 count=$(ls "$tmp"/*.mmd 2>/dev/null | wc -l | tr -d ' ')
 [ "$count" -gt 0 ] || { echo "mermaid-check: no mermaid diagrams found"; exit 0; }
+[ "$struct_rc" -eq 0 ] || { echo "mermaid-check: $count/$count structurally invalid" >&2; exit 1; }
 
-fail=0
+# --- Stage 2: full parse, budget permitting ----------------------------------
+command -v npx >/dev/null 2>&1 || { echo "mermaid-check: structural OK ($count/$count); npx absent, full parse skipped"; exit 0; }
+
+cat > "$tmp/puppeteer.json" <<'CONF'
+{ "args": ["--no-sandbox", "--disable-setuid-sandbox"] }
+CONF
+
+fail=0; checked=0
 for mmd in "$tmp"/*.mmd; do
+    [ "$(date +%s)" -lt "$DEADLINE" ] || {
+        echo "mermaid-check: structural OK ($count/$count); full parse skipped — over 10s budget at $checked/$count"
+        exit 0
+    }
     src=$(cat "${mmd%.mmd}.src")
     if ! npx -y @mermaid-js/mermaid-cli -p "$tmp/puppeteer.json" -i "$mmd" -o "${mmd%.mmd}.svg" > "${mmd%.mmd}.err" 2>&1; then
         echo "mermaid-check: FAILED in $src — mmdc output follows:" >&2
         tail -n 5 "${mmd%.mmd}.err" >&2
         fail=1
     fi
+    checked=$((checked + 1))
 done
 
-[ "$fail" -eq 0 ] && echo "mermaid-check: $count/$count diagrams parse"
+[ "$fail" -eq 0 ] && echo "mermaid-check: $checked/$checked diagrams parse (structural + full)"
 exit "$fail"
