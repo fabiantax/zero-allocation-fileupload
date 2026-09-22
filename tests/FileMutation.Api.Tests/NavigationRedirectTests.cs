@@ -1,4 +1,7 @@
 using System.Net;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -23,5 +26,18 @@ public sealed class NavigationRedirectTests(FileMutationApiFactory factory)
 
         Assert.Equal(HttpStatusCode.Found, response.StatusCode);
         Assert.Equal("/scalar/", response.Headers.Location?.ToString());
+    }
+
+    [Fact]
+    public async Task Unknown_paths_return_a_problem_details_404()
+    {
+        var response = await _client.GetAsync("/does-not-exist").WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.Status);
+        Assert.False(string.IsNullOrWhiteSpace(problem.Detail));
     }
 }

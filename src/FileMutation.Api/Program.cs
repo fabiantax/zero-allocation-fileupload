@@ -75,6 +75,21 @@ app.MapFileMutateEndpoint();      // POST /files/mutate
 app.MapGet("/", () => Results.Redirect("/scalar/", permanent: false));
 app.MapGet("/swagger", () => Results.Redirect("/scalar/", permanent: false));
 
+// Unmatched paths get the same RFC 7807 shape as every other error, not an empty 404 body.
+// A middleware, not MapFallback: the fallback route would also swallow the endpoint's 415
+// content-type rejection (the router declines the match, the fallback answers instead).
+app.Use(async (context, next) =>
+{
+    await next(context);
+    if (context.Response.StatusCode == StatusCodes.Status404NotFound && !context.Response.HasStarted)
+    {
+        await Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            detail: "No endpoint matches the request path.").ExecuteAsync(context);
+    }
+});
+
 await app.RunAsync();
 
 // Source-generated JSON metadata for ProblemDetails, so error bodies serialize without reflection
