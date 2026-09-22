@@ -115,6 +115,50 @@ This decision is deliberate YAGNI, not an unexamined default. A mediator would n
 endpoint CQRS: there is one command, no second read model, no persistence, and no independently
 changing query path. CQRS's separation buys nothing here.
 
+## Addendum (2026-09-23): when a mediator earns its keep
+
+The rejection above is about this codebase's size, not about the pattern. The same
+indirection that is pure cost at one command becomes the cheapest way to organize a
+large one, and the honest version of this ADR says where the line is.
+
+**Dispatch at count.** With one use case, a mediator is an extra hop whose convention has
+no second participant. At dozens of request types the convention inverts: every use case
+enters through the same `Send` call, the caller stops knowing handler types, and adding a
+use case means adding a class without editing a composition root. The wiring cost is paid
+once; the per-use-case cost approaches zero.
+
+**Pipeline behaviors are the real prize.** A mediator's decorator chain applies
+cross-cutting concerns, such as validation, logging, transaction scopes, caching,
+authorization, or idempotency, to every handler without each handler mentioning them.
+Direct composition repeats those concerns per service, or grows a hand-built decorator
+stack that is a worse-maintained copy of what the library ships. A rough rule: with at
+least three use cases and at least two shared concerns, behaviors have amortized their
+introduction. This is the feature most teams adopting MediatR actually came for.
+
+**Solution and team scale.** Convention-based handler discovery lets vertical slices
+arrive self-contained: a feature module registers its own handlers, senders depend on
+message contracts rather than handler assemblies, and parallel teams stop colliding on a
+shared composition root. In a solution with tens of projects that is an organizational
+property first and a technical one second. It is meaningless at one handler.
+
+**Long-running workflows are a different question.** When "process" means state that
+outlives a request (a saga, an outbox, retries with durability, scheduled continuation),
+a full runtime such as Wolverine or MassTransit earns its framework footprint: durable
+messaging, error policies, and persisted orchestration state. That is not a mediator
+anymore; it is an orchestration engine, and it is justified by workflow requirements
+(spans systems, survives restarts, needs compensation), never by request count alone.
+
+**The costs scale too.** Every benefit above is an indirection: stack traces pass
+through the dispatcher, behavior ordering becomes architecture that someone must own,
+and the dependency brings its licence and upgrade lifecycle. A large solution that
+adopts a mediator without the triggering shape pays the costs and receives a
+convention it never uses.
+
+**Triggers that would reopen this ADR for this codebase:** a third command sharing
+concerns with the first two; a read model that evolves independently of the write path
+(actual CQRS, not the buzzword); or a durable, multi-step workflow requirement. Absent
+one of those, direct composition stays the right answer at any code quality bar.
+
 ## Consequences
 
 - The endpoint and the future file-processing service keep direct, constructor-injected
