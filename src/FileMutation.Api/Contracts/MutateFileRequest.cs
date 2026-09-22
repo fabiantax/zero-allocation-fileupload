@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc;
 
 namespace FileMutation.Api.Contracts;
 
@@ -9,8 +10,9 @@ namespace FileMutation.Api.Contracts;
 /// </summary>
 public sealed class MutateFileRequest
 {
-    /// <summary>The UTF-8 <c>.txt</c> file to mutate.</summary>
+    /// <summary>A UTF-8 .txt file declared as text/plain.</summary>
     [Required]
     [Description("A UTF-8 .txt file declared as text/plain.")]
+    [FromForm(Name = "file")]
     public required IFormFile File { get; init; }
 }

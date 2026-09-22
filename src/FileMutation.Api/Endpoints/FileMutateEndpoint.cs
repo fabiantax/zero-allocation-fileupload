@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using FileMutation.Application;
+using FileMutation.Api.Contracts;
 using FileMutation.Domain.Ports;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -12,7 +13,7 @@ namespace FileMutation.Api.Endpoints;
 /// Configured ceilings for one upload: the file itself, plus multipart framing overhead.
 /// Settable properties with a parameterless constructor because <c>IOptions</c> binds that way.
 /// </summary>
-public sealed class UploadLimits
+internal sealed class UploadLimits
 {
     /// <summary>The largest accepted file, in bytes.</summary>
     public long MaxFileBytes { get; set; } = 10 * 1024 * 1024;
@@ -27,17 +28,17 @@ public sealed class UploadLimits
 /// <see href="../../../docs/adr/0005-streaming-allocation-strategy.md">ADR 0005</see> for the
 /// two-phase ordering this endpoint exists to guarantee.
 /// </summary>
-public static class FileMutateEndpoint
+internal static class FileMutateEndpoint
 {
     private const int SegmentSize = 16 * 1024;
     private const string FileFieldName = "file";
 
     /// <summary>Maps <c>POST /files/mutate</c> and its OpenAPI response contract.</summary>
-    public static RouteHandlerBuilder MapFileMutateEndpoint(this IEndpointRouteBuilder endpoints)
+    internal static RouteHandlerBuilder MapFileMutateEndpoint(this IEndpointRouteBuilder endpoints)
     {
         return endpoints.MapPost("/files/mutate", ExecuteAsync)
             .WithName("MutateFile")
-            .Accepts<IFormFile>("multipart/form-data")
+            .Accepts<MutateFileRequest>("multipart/form-data")
             .Produces(StatusCodes.Status200OK, contentType: "text/plain")
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)

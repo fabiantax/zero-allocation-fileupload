@@ -1,11 +1,14 @@
 using System.Buffers;
 using System.IO.Pipelines;
+using FileMutation.Domain.Ports;
+using FileMutation.Infrastructure;
 using FileMutation.TestCommon;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace FileMutation.Infrastructure.Tests;
 
-public sealed class DateAndRandomSequenceMutatorTests
+public sealed class FileMutatorAdapterTests
 {
     private const string Suffix = "\n2026-09-22:0123456789ABCDEF";
 
@@ -28,20 +31,12 @@ public sealed class DateAndRandomSequenceMutatorTests
     [Fact]
     public async Task SegmentBoundary_multi_segment_buffer_copies_every_segment()
     {
-        var first = new BufferSegment("first"u8.ToArray());
-        var second = first.Append("-second"u8.ToArray());
-        var last = second.Append("-third"u8.ToArray());
-        var input = new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length);
-        var output = new Pipe();
+        var output = await MutateAsync(new SegmentedReadStream(
+            "first"u8.ToArray(),
+            "-second"u8.ToArray(),
+            "-third"u8.ToArray()));
 
-        Assert.False(input.IsSingleSegment);
-        DateAndRandomSequenceMutator.WriteBuffer(input, output.Writer);
-        await output.Writer.CompleteAsync();
-
-        var result = await output.Reader.ReadAsync();
-        Assert.True(result.Buffer.ToArray().AsSpan().SequenceEqual("first-second-third"u8));
-        output.Reader.AdvanceTo(result.Buffer.End);
-        await output.Reader.CompleteAsync();
+        Assert.Equal($"first-second-third{Suffix}", System.Text.Encoding.UTF8.GetString(output));
     }
 
     [Fact]
@@ -65,10 +60,7 @@ public sealed class DateAndRandomSequenceMutatorTests
         await using var source = new GeneratedReadStream(inputLength);
         await using var destination = new RecordingWriteStream();
         using var memoryPool = new TrackingMemoryPool();
-        var sut = new DateAndRandomSequenceMutator(
-            new FixedTimeProvider(new DateTimeOffset(2026, 9, 22, 23, 59, 58, TimeSpan.Zero)),
-            new FixedRandomSequenceGenerator("0123456789ABCDEF"),
-            memoryPool);
+        var sut = CreateMutator(memoryPool);
 
         await sut.MutateAsync(source, destination);
 
@@ -80,6 +72,11 @@ public sealed class DateAndRandomSequenceMutatorTests
     private static async Task<byte[]> MutateAsync(byte[] input)
     {
         await using var source = new MemoryStream(input, writable: false);
+        return await MutateAsync(source);
+    }
+
+    private static async Task<byte[]> MutateAsync(Stream source)
+    {
         await using var destination = new MemoryStream();
 
         await CreateMutator().MutateAsync(source, destination);
@@ -87,24 +84,53 @@ public sealed class DateAndRandomSequenceMutatorTests
         return destination.ToArray();
     }
 
-    private static DateAndRandomSequenceMutator CreateMutator() =>
-        new(
-            new FixedTimeProvider(new DateTimeOffset(2026, 9, 22, 23, 59, 58, TimeSpan.Zero)),
-            new FixedRandomSequenceGenerator("0123456789ABCDEF"));
-
-    private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
+    private static IFileMutator CreateMutator(MemoryPool<byte>? memoryPool = null)
     {
-        public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
-
-        public BufferSegment Append(ReadOnlyMemory<byte> memory)
+        var services = new ServiceCollection()
+            .AddFileMutationInfrastructure()
+            .AddSingleton<TimeProvider>(
+                new FixedTimeProvider(new DateTimeOffset(2026, 9, 22, 23, 59, 58, TimeSpan.Zero)))
+            .AddSingleton<IRandomSequenceGenerator>(new FixedRandomSequenceGenerator("0123456789ABCDEF"));
+        if (memoryPool is not null)
         {
-            var segment = new BufferSegment(memory)
-            {
-                RunningIndex = RunningIndex + Memory.Length,
-            };
-            Next = segment;
-            return segment;
+            services.AddSingleton<MemoryPool<byte>>(memoryPool);
         }
+
+        using var provider = services.BuildServiceProvider();
+        return provider.GetRequiredService<IFileMutator>();
+    }
+
+    private sealed class SegmentedReadStream(params byte[][] parts) : Stream
+    {
+        private int _partIndex;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => parts.Sum(part => part.Length);
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_partIndex >= parts.Length || buffer.IsEmpty)
+            {
+                return ValueTask.FromResult(0);
+            }
+
+            var part = parts[_partIndex++];
+            var count = Math.Min(buffer.Length, part.Length);
+            part.AsSpan(0, count).CopyTo(buffer.Span);
+            return ValueTask.FromResult(count);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class TrackingMemoryPool : MemoryPool<byte>

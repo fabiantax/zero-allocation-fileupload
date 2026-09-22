@@ -1,8 +1,11 @@
+using FileMutation.Domain.Ports;
+using FileMutation.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace FileMutation.Infrastructure.Tests;
 
-public sealed class CryptoRandomSequenceGeneratorTests
+public sealed class RandomSequenceGeneratorAdapterTests
 {
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
@@ -11,7 +14,10 @@ public sealed class CryptoRandomSequenceGeneratorTests
     {
         var destination = new string('?', 64).ToCharArray();
 
-        new CryptoRandomSequenceGenerator().Fill(destination);
+        using var provider = new ServiceCollection()
+            .AddFileMutationInfrastructure()
+            .BuildServiceProvider();
+        provider.GetRequiredService<IRandomSequenceGenerator>().Fill(destination);
 
         Assert.DoesNotContain('?', destination);
         Assert.All(destination, character => Assert.Contains(character, Alphabet));
@@ -20,7 +26,10 @@ public sealed class CryptoRandomSequenceGeneratorTests
     [Fact]
     public void Two_calls_produce_different_sequences()
     {
-        var generator = new CryptoRandomSequenceGenerator();
+        using var provider = new ServiceCollection()
+            .AddFileMutationInfrastructure()
+            .BuildServiceProvider();
+        var generator = provider.GetRequiredService<IRandomSequenceGenerator>();
         var first = new char[64];
         var second = new char[64];
 

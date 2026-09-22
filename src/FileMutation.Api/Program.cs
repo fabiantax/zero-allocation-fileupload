@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
 using FileMutation.Api.Endpoints;
 using FileMutation.Api.ExceptionHandling;
-using FileMutation.Domain.Ports;
 using FileMutation.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -39,8 +38,7 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IRandomSequenceGenerator, CryptoRandomSequenceGenerator>();
-builder.Services.AddSingleton<IFileMutator, DateAndRandomSequenceMutator>();
+builder.Services.AddFileMutationInfrastructure();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonSerializerContext.Default));
 builder.Services.AddOpenApi();
