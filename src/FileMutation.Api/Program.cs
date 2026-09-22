@@ -81,7 +81,7 @@ namespace FileMutation.Api
 
 /// <summary>
 /// Provides the application entry point used by the host and integration-test factory.
-/// See <see href="../../docs/adr/0006-openapi-scalar.md">ADR 0006</see>.
+/// See <see href="../../docs/decision-log.md#an-openapi-ui-without-swashbuckle">the OpenAPI decision</see>.
 /// </summary>
 public partial class Program
 {

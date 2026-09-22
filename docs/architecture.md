@@ -1,15 +1,12 @@
 # Architecture
 
-These diagrams describe the **designed** architecture. No code exists yet — they are the
-contract tasks 001–004 build against, and they are expected to be corrected against reality once
-those tasks land (task 010 owns that pass).
-
-Source of truth for the decisions behind them: `.claude/epics/file-mutation-api/epic.md`.
+These diagrams describe the architecture as built. The decisions behind them are recorded in
+`docs/decision-log.md` and the ADRs in `docs/adr/`.
 
 ## 1. Structure — layers and ports
 
 The dependency rule is the point: **arrows only ever point inward**. Domain and Application
-reference neither Infrastructure nor Api. `FileMutation.Architecture.Tests` (task 007) enforces
+reference neither Infrastructure nor Api. `FileMutation.Architecture.Tests` enforces
 this with ArchUnitNET for type-level dependencies, plus a `.csproj` reference check — ArchUnitNET
 analyses compiled type usage, so an unused-but-forbidden project reference would otherwise pass.
 
@@ -179,13 +176,3 @@ the 85,000-byte large-object-heap threshold — so a 10 MB upload never produces
 Peak memory per request is bounded by the configured maximum upload size and returned to the pool
 afterwards. The claim is *no LOH allocation and bounded pooled memory per request*, not *nothing
 is ever buffered*.
-
-## Mapping to the task breakdown
-
-| Diagram element | Built by |
-|---|---|
-| API host, OpenAPI document, Scalar UI | 001 |
-| `FileName`, mutation policy, ports, `FileAcceptance` | 002 |
-| `DateAndRandomSequenceMutator`, segment handling | 003 |
-| Endpoint, two-phase ordering, `ProblemDetails`, `Content-Disposition` | 004 |
-| Dependency-rule enforcement | 007 |
