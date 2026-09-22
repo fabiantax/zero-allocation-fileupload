@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "File Mutation API (.NET 10)",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0",
+  "forwardPorts": [5080, 7080],
+  "portsAttributes": {
+    "5080": {
+      "label": "HTTP API",
+      "onAutoForward": "openBrowser"
+    },
+    "7080": {
+      "label": "HTTPS API",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "dotnet restore && dotnet dev-certs https"
+}

@@ -56,29 +56,27 @@ internal sealed class DateAndRandomSequenceMutator : IFileMutator
                 pool: _memoryPool,
                 minimumBufferSize: PipeSegmentSize,
                 leaveOpen: true));
-        Exception? completionException = null;
-
         try
         {
             await CopySourceAsync(reader, writer, cancellationToken).ConfigureAwait(false);
             AppendSuffix(writer);
             await FlushAsync(writer, cancellationToken).ConfigureAwait(false);
+            await reader.CompleteAsync().ConfigureAwait(false);
+            await writer.CompleteAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            completionException = exception;
-            throw;
-        }
-        finally
-        {
+            // Complete both pipes with the failure so their owners see it, then let it propagate.
             try
             {
-                await reader.CompleteAsync(completionException).ConfigureAwait(false);
+                await reader.CompleteAsync(exception).ConfigureAwait(false);
             }
             finally
             {
-                await writer.CompleteAsync(completionException).ConfigureAwait(false);
+                await writer.CompleteAsync(exception).ConfigureAwait(false);
             }
+
+            throw;
         }
     }
 

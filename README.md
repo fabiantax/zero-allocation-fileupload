@@ -42,6 +42,28 @@ curl --fail-with-body \
 The exact base URL can differ if ASP.NET Core environment variables or launch settings override
 the default; use the `Now listening on` address printed by the application.
 
+## Run in a container or Codespaces
+
+On Windows, install Docker Desktop with the WSL2 backend. On macOS, use Docker Desktop or
+OrbStack. Open the repository in VS Code and run **Dev Containers: Reopen in Container**, or use
+the repository's **Open in Codespaces** button; Codespaces needs no local container runtime.
+
+The dev container uses the official `mcr.microsoft.com/devcontainers/dotnet:1-10.0` image, runs
+`dotnet restore` and `dotnet dev-certs https` on creation, and forwards the same `5080` (HTTP)
+and `7080` (HTTPS) ports as the launch profiles. Once it is open, run the API from the
+repository root exactly as locally:
+
+```bash
+dotnet run --project src/FileMutation.Api
+```
+
+The launch profiles behave exactly as locally: the default command listens on
+<http://localhost:5080>, and adding `--launch-profile https` also listens on
+<https://localhost:7080>. Open either address with `/scalar/v1` appended; the OpenAPI document is
+at `/openapi/v1.json` on the same port. The generated HTTPS certificate is self-signed, so a
+browser may ask you to accept it before opening the HTTPS URL. The bash pre-commit hooks are
+contributor tooling and do not fire on Windows; they are not needed to review or run the code.
+
 ## Run the tests
 
 ```bash
