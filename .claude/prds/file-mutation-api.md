@@ -50,7 +50,7 @@ Acceptance criteria:
 - [ ] Anything outside the accepted set is rejected (HTTP 415): extension other than `.txt`, declared content-type other than `text/plain`, or content that does not decode as UTF-8
 - [ ] A file whose bytes decode cleanly but whose format we do not accept (`.json`, `.csv`, `.docx`) is still rejected — decoding is necessary, not sufficient
 - [ ] Missing/empty file field is rejected (HTTP 400)
-- [ ] All error responses are RFC 7807 `ProblemDetails`
+- [ ] All error responses generated before the response starts are RFC 7807 `ProblemDetails`
 - [ ] No unhandled exception leaks a stack trace to the caller
 
 ### US-3: Trust the implementation
@@ -74,8 +74,8 @@ Acceptance criteria:
 | FR-4 | An OpenAPI document and a browser UI (Scalar) document the endpoint, its responses, and its error shapes |
 | FR-5 | Upload size is capped at a configurable limit (Kestrel + `MultipartBodyLengthLimit`) |
 | FR-6 | Only `.txt` files declared `text/plain` and decodable as UTF-8 (BOM optional) are accepted. All three checks must pass; anything else is rejected with 415 |
-| FR-7 | All errors return RFC 7807 `ProblemDetails` |
-| FR-8 | Mutation rules and storage are behind ports (`IFileMutator`, `IFileRepository`) so either can be replaced without touching the API or application layer |
+| FR-7 | Application-generated errors raised **before the response has started** return RFC 7807 `ProblemDetails`. Transport-level failures (malformed HTTP, client disconnect, cancellation) and any failure after the response body has begun terminate the exchange without a structured body — this is a framework limit, not a choice |
+| FR-8 | The mutation rule sits behind a port (`IFileMutator`) so it can be replaced without touching the API or application layer |
 | FR-9 | `IFileMutator` carries its `Format` and `MutationCapability`, and `IFileMutatorRegistry` resolves filename + content-type to one. A format needing different treatment is added as another adapter without touching the endpoint or the use case. Exactly one adapter ships: UTF-8 plain text |
 
 ## Non-Functional Requirements
@@ -90,7 +90,7 @@ Acceptance criteria:
 | NFR-6 | Public members carry XML documentation; ADRs are linked from XML docs where a decision explains the code |
 | NFR-7 | DI container validates on build (`ValidateOnBuild`, `ValidateScopes`) so lifetime mistakes fail at startup, not in production |
 | NFR-8 | Code is testable by construction: time (`TimeProvider`) and randomness injected, mutation logic pure and host-independent |
-| NFR-9 | Publishes with Native AOT (`PublishAot`): no JIT warmup, fast cold start, low resident memory per instance — and the trim-safe discipline it forces is the same one the allocation goal needs. Requires built-in `Microsoft.AspNetCore.OpenApi` + Scalar (not Swashbuckle) and source-generated JSON (not reflection-based, not Newtonsoft). Library projects set `IsAotCompatible` so violations fail at build |
+| NFR-9 | Publishes with Native AOT (`PublishAot`): no JIT warmup, fast cold start, low resident memory per instance — and the trim-safe discipline it forces is the same one the allocation goal needs. Requires built-in `Microsoft.AspNetCore.OpenApi` + Scalar (not Swashbuckle) and source-generated JSON (not reflection-based, not Newtonsoft). Library projects set `IsAotCompatible` to enable the AOT/trim analyzers; because those emit *warnings*, CI must promote the relevant IL/RDG diagnostics to errors for them to gate anything. Publishing and running the native binary is the actual proof |
 
 ## Success Criteria
 
@@ -122,12 +122,12 @@ Acceptance criteria:
 
 | # | Question | Default if unanswered |
 |---|---|---|
-| OQ-1 | Does the mutated file need to be persisted and retrievable later, or is synchronous return sufficient? | Synchronous return only; `IFileRepository` port exists so persistence can be added without rework |
+| ~~OQ-1~~ | ~~Does the mutated file need to be persisted and retrievable later?~~ | **Answered: no.** Upload, mutate, return. Nothing is written to disk or a database. The repository port has been removed rather than left as speculative scaffolding |
 | OQ-2 | Does a regulated (medical/ISO) context apply, requiring an immutable audit trail plus OpenTelemetry? | **Out of scope.** Nothing in the ticket implies a regulated domain. The repository port is shaped so an audit-backed adapter can be added later without restructuring |
 | OQ-3 | Expected concurrency/volume? | "Tens concurrent" assumed; design targets no unbounded per-request allocation |
 | OQ-4 | Auth model for the endpoint? | Open for the exercise; production posture documented, not implemented |
 
-OQ-1 and OQ-2 are the highest-value clarifications to raise with the product owner — they gate the largest amount of potential scope.
+OQ-2 is the remaining high-value clarification for the product owner. OQ-1 is settled: no persistence, so no storage port, no adapter, no `data/` directory.
 
 ## Out of Scope
 
@@ -137,12 +137,12 @@ OQ-1 and OQ-2 are the highest-value clarifications to raise with the product own
 | Audit trail with immutable rows (medical/ISO compliance) | Not implemented; port left extensible | No regulated context stated in the ticket. Building a compliance subsystem for an unstated requirement is speculative scope |
 | OpenTelemetry / distributed tracing | Not implemented | Only justified alongside the audit-trail requirement above; no observability requirement stated |
 | Queue / ServiceBus ingestion and throttling | Assumed external | API is synchronous request/response; the ticket describes no queued ingestion |
-| Azure Blob / object storage | Local `data/` directory instead | Cloud storage wiring is infrastructure plumbing, not the ticket's problem; the port makes it a later swap |
+| Any storage — database, disk, or object store | Not implemented; nothing is written anywhere | The ticket is upload → mutate → return. The mutated bytes go to the response and are then gone. No EF Core, no SQLite, no `data/` directory, and no repository port held open "just in case" |
 | Rate limiting | Not implemented | No abuse or multi-tenancy concern stated; a production concern rather than an exercise one |
 | Authentication / authorization | Not implemented; documented as an Entra ID/JWT decision for production | Ticket describes uploading "through the Swagger UI", implying open access for evaluation |
 | GDPR / PII handling | Not implemented | No personal data mentioned in file contents; assumed plain text without PII |
 | Gherkin / BDD test layer | Not implemented | Plain unit and integration tests are proportionate; BDD tooling adds process overhead without adding signal here |
-| Millions-of-records index tuning (UUIDv7 keys) | Not implemented | Depends on OQ-1 persistence being required at all; premature without a stated retention or scale requirement |
+| Millions-of-records index tuning (UUIDv7 keys) | Not implemented | There is no store to index — OQ-1 is answered: nothing is persisted |
 | `.docx` (or other container formats) | Not implemented; the seam that would host it ships | A `.docx` is a ZIP/OPC package whose central directory sits at the end of the file, so mutating it requires buffering the whole archive — breaking NFR-1 and NFR-3 — and `DocumentFormat.OpenXml` is unlikely to survive trimming under NFR-9. It is also not a text file, so it is outside the ticket. See ADR-0009 |
 | Structured text (`.json`, `.csv`, `.xml`) | Not implemented; rejected with 415 | These decode as text, so a decode-only check would accept them — and appending a date would then produce structurally invalid output that still looks like a success. Restricting to `.txt` is what keeps the validation honest |
 | Non-UTF-8 encodings (UTF-16, legacy code pages) | Not implemented; rejected with 415 | The appended suffix is UTF-8 bytes. Appending them to a UTF-16 file produces mojibake, so accepting the file would corrupt it silently. A BOM-aware suffix encoder is the extension point if this is ever needed |

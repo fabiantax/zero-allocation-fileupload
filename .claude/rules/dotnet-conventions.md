@@ -57,7 +57,7 @@ sequences will pass every test except a file that happens to split one.
 
 ## Ports have one implementation, and that is fine
 
-`IFileMutator`, `IFileRepository` and `IRandomSequenceGenerator` each have a single adapter.
+`IFileMutator` and `IRandomSequenceGenerator` each have a single adapter.
 That is what ports-and-adapters looks like — a port exists to invert a dependency and keep the
 core testable, so it is judged by whether the dependency needs inverting, not by how many
 implementations exist.

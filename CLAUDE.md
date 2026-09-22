@@ -61,7 +61,7 @@ added is a package that has to be trim-safe.
 | Swashbuckle | Reflection-based; blocks Native AOT |
 | Newtonsoft.Json | Reflection-based; cannot be made AOT-safe |
 | MVC controllers | Not AOT-supported |
-| EF Core / SQLite | No persistence requirement (PRD OQ-1) |
+| EF Core / SQLite / any storage | Nothing is persisted — upload, mutate, return (PRD OQ-1, answered) |
 
 ### Why there is this much process around a small feature
 

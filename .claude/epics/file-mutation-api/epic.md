@@ -21,16 +21,17 @@ Sequenced so the riskiest unknown is settled first (a 1h AOT spike), a running O
 | Decision | Choice | Rationale |
 |---|---|---|
 | Layering | `Domain` / `Application` / `Infrastructure` / `Api` | Ticket asks for DDD + Clean Code; multiple consuming domains need a contract that doesn't leak implementation |
+| Architecture enforcement | ArchUnitNET for type/namespace dependency rules, **plus** a separate `.csproj` reference check | ArchUnitNET analyses type and member usage in compiled assemblies, so an unused-but-forbidden `ProjectReference` produces no type dependency and passes. The project-graph check is what closes that gap |
 | Dependency rule | Domain and Application never reference Infrastructure or Api | Enforced mechanically by ArchUnitNET, not by convention |
 | Streaming | `System.IO.Pipelines`, `Span<byte>`/`Memory<byte>` | NFR-1/NFR-3: no whole-file buffering, no LOH allocations under concurrency |
 | Native AOT | `PublishAot=true`, minimal APIs, source-generated JSON | See "Why Native AOT" below |
 | OpenAPI + UI | Built-in `Microsoft.AspNetCore.OpenApi` for the document, `Scalar.AspNetCore` for the browser UI | Swashbuckle is reflection-based and blocks AOT. Scalar serves a static shell that fetches the OpenAPI document, so the "OpenAPI UI-enabled endpoint" requirement is met without the reflection dependency |
-| JSON | `System.Text.Json` source generator (`JsonSerializerContext`) | Reflection-based serialisation does not survive trimming; source generation does. Newtonsoft.Json is excluded for the same reason |
+| JSON | `System.Text.Json` source generator (`JsonSerializerContext`) | Reflection-based `System.Text.Json` is disabled by default under trimming/AOT because the required metadata cannot be relied on after trimming — so generated metadata is used for every application JSON type. Newtonsoft.Json is excluded for the same reason |
 | Time | `TimeProvider` (built into .NET 8+) | Native seam; no custom `IClock` abstraction needed |
 | Randomness | Injected generator behind an interface | Deterministic assertions in tests |
 | Errors | Built-in `AddProblemDetails()` (RFC 7807) | Framework-native; no custom error envelope |
 | Download naming | `Results.File(..., fileDownloadName:)` | Sets `Content-Disposition` including RFC 5987 encoding for free |
-| Persistence | `IFileRepository` port, local-disk adapter | Ticket requires no persistence (OQ-1); the port keeps SQLite/audit/blob a later swap, not a rewrite |
+| Persistence | **None.** No port, no adapter, no storage | OQ-1 is answered: upload, mutate, return. A repository port with no requirement behind it is speculative scaffolding that a reviewer reads as indecision, and it forces every consumer to wire an adapter for a capability nobody asked for |
 | Format dispatch | `IFileMutator` carries `Format` + `Capability`; `IFileMutatorRegistry` selects one. One adapter (UTF-8 plain text) ships | Accepted set is `.txt` only. No second port is introduced — the existing mutator port gains format identity, because a parallel interface with the same shape would be duplication. See ADR-0009 |
 | Mediator | Two variants, simple ships by default | MediatR is commercial since v13; the decision itself is the deliverable, recorded in an ADR |
 | DI | Default container + `ValidateOnBuild`/`ValidateScopes` | Lifetime errors fail at startup instead of in production |
@@ -43,7 +44,7 @@ Recorded here because it is a deliberate constraint, not a default — it rules 
 - **No JIT warmup.** First-request latency is predictable. Under the assumed burst profile (tens of concurrent uploads), a JIT'd host pays its tiering cost exactly when load arrives.
 - **Lower resident memory per instance.** This is a shared platform capability consumed by several domains, so it scales horizontally — per-instance footprint multiplies.
 - **Fast cold start.** Makes scale-to-zero container hosting viable rather than something to design around.
-- **It enforces the same discipline as the allocation goal.** AOT demands reflection-free, trim-safe code; so does a zero-allocation hot path. The two constraints reinforce each other instead of competing, and the AOT analyzers catch violations at build time.
+- **It forces reflection-free, trim-safe code.** That is a discipline worth having, but note it is *not* the same constraint as the allocation goal: AOT analyzers diagnose dynamic-code and trimming hazards, not managed allocations. Reflection-free code can allocate heavily and allocation-free code can be trim-unsafe. The two are verified separately — analyzers for AOT, BenchmarkDotNet for allocation.
 - **Smaller attack surface** — no runtime code generation.
 
 **Costs accepted:**
@@ -60,7 +61,7 @@ Recorded here because it is a deliberate constraint, not a default — it rules 
 |---|---|---|
 | No ceremonial aggregate | `FileName` is a value object; there is no `UploadedFile` aggregate root | The operation is a stateless transformation with no identity, lifecycle, or invariants spanning entities. Inventing an aggregate to look DDD-shaped is cargo cult |
 | Policy vs plumbing | Domain owns the mutation *rule* (what is appended and in what format) as a pure function over `Span<byte>`; Infrastructure owns the `Pipelines` mechanics that feed it | Keeps Domain I/O-free per Clean Architecture, *and* makes the hot path unit-testable against a stack-allocated span with no streams. The two goals reinforce each other |
-| Port ownership | Ports are declared by the layer that consumes them, implemented by the layer outside it | `IFileRepository` and the mutation contract live in Domain; Application depends on them; Infrastructure implements them. Dependencies point inward only |
+| Port ownership | `IFileMutator` and `IRandomSequenceGenerator` live in Domain; Infrastructure implements them; dependencies point inward only | Stated as placement rather than as a principle, because the tidy rule "the consuming layer declares the port" would put `IFileMutator` in Application, which orchestrates it. It sits in Domain because the mutation contract is the domain's own vocabulary. That is a judgement call, not a law |
 | Published language | Consuming domains bind to the OpenAPI/HTTP contract, never to domain types | Bounded-context boundary. Sharing domain types across teams couples their release cycle to ours |
 | Mapping at the edge | API DTOs are mapped in the endpoint; they never reach Domain | Stops wire-format concerns leaking into the model |
 | Expected failures aren't exceptions | Validation returns a result; exceptions are reserved for genuinely exceptional states | A rejected upload is an expected outcome. Throwing on it costs an allocation and a stack unwind on a hot path |
@@ -73,9 +74,9 @@ Recorded here because it is a deliberate constraint, not a default — it rules 
 
 ### Backend Services
 
-- **FileMutation.Domain** — `FileName` value object, the mutation policy as a pure span-based function, and ports (`IFileMutator`, `IFileRepository`, `IRandomSequenceGenerator`). No implementations, no framework references.
+- **FileMutation.Domain** — `FileName` value object, the mutation policy as a pure span-based function, and ports (`IFileMutator`, `IRandomSequenceGenerator`). No implementations, no framework references.
 - **FileMutation.Application** — use-case orchestration (`MutateFileUseCase`, or a command handler in the CQRS variant) plus validation rules (size, type, text-decodability).
-- **FileMutation.Infrastructure** — adapters: `DateAndRandomSequenceMutator` (Pipelines plumbing calling the domain policy), `LocalDiskFileRepository`, `CryptoRandomSequenceGenerator`.
+- **FileMutation.Infrastructure** — adapters: `DateAndRandomSequenceMutator` (Pipelines plumbing calling the domain policy) and `CryptoRandomSequenceGenerator`.
 - **FileMutation.Api** — minimal API host, OpenAPI document + Scalar UI, ProblemDetails wiring, request limits, DI composition root.
 
 ### Solution Layout
@@ -96,7 +97,6 @@ tests/
 benchmarks/
   FileMutation.Benchmarks/
 docs/adr/
-data/                                # git-ignored
 ```
 
 Test projects are named `{project}.Tests` so `*.Tests` greps cleanly and each suite's subject is unambiguous. `FileMutation.Architecture.Tests` follows the same pattern although its subject is the solution's shape rather than a single project.
@@ -136,7 +136,6 @@ land in one coherent PR rather than being split three ways to satisfy a number.
 | 002 | Domain contracts and ports | 2 | no | 001 | US-1 | 4 |
 | 003 | Pipelines-based mutation engine | 3 | yes | 002 | US-1 | 5 |
 | 004 | Upload endpoint, validation, ProblemDetails | 3 | yes | 002 | US-1, US-2 | 3 |
-| 005 | Local-disk repository adapter | — | — | 002 | — | 2 |
 | 006 | Unit tests for domain, application and infrastructure | 3 | no | 003, 004 | US-1, US-3 | 2 |
 | 007 | ArchUnitNET architecture rules | 3 | yes | 002 | US-3 | 2 |
 | 008 | BenchmarkDotNet allocation proof | 3 | yes | 003 | US-3 | 3 |
@@ -146,9 +145,10 @@ land in one coherent PR rather than being split three ways to satisfy a number.
 | 012 | Integration tests + raise gate to 80% | 3 | no | 003, 004, 006 | US-2, US-3 | 3 |
 | 013 | Implement chosen CQRS mediator on a branch | 3 | yes | 009, 003, 004 | — | 3 |
 
-**005 is deferred** (`status: blocked`) pending PRD open questions OQ-1/OQ-2. Nothing depends
-on it, so deferring costs nothing — and if OQ-1 comes back "persist and retrieve", the task
-is rewritten rather than adjusted, which is precisely why it is not started on a guess.
+**005 is cancelled.** OQ-1 came back "nothing is persisted", so the local-disk repository
+adapter has no requirement behind it. The task and its port are removed rather than left
+deferred — a port kept open for a capability that was explicitly declined is scaffolding, not
+extensibility.
 
 **011 is contingent** on 000. If the spike concludes AOT is dropped, 011 closes as
 not-applicable.
@@ -164,7 +164,7 @@ serve no user story are enabling work or decision artifacts — legitimate, but 
 | **US-1** Upload and receive a mutated file | 001, 002, 003, 004, 006 | 012 integration test: round trip returns mutated content under the original filename |
 | **US-2** Reject invalid uploads predictably | 004, 006, 012 | 012 integration tests asserting `ProblemDetails` for 413 / 415 / 400 |
 | **US-3** Trust the implementation | 006, 007, 008, 010, 011, 012 | Green CI: branch coverage ≥80%, architecture rules pass, benchmark + AOT numbers committed |
-| *(none)* | 000, 005, 009, 013 | Spike, deferred work, and the CQRS decision + its counterfactual branch |
+| *(none)* | 000, 009, 013 | Spike, and the CQRS decision plus its counterfactual branch |
 
 No user story may be closed until the row's "demonstrated by" artifact exists and is green.
 
@@ -195,7 +195,7 @@ issues.
 - .NET 10 SDK available on CI runners
 - Branch protection configured on `main` after the first PR reports its checks (GitHub cannot
   require a check that has never run)
-- OQ-1/OQ-2 answers gate task 005 only; no other task blocks on them
+- OQ-2 remains open but blocks nothing; OQ-1 is answered (no persistence) and task 005 is cancelled
 - Task 000's outcome determines the package stack for 001 and whether 011 exists at all
 
 ## Success Criteria (Technical)
@@ -226,7 +226,6 @@ streams.
 - [ ] 002.md - Domain contracts and ports (parallel: false)
 - [ ] 003.md - Pipelines-based mutation engine (parallel: true)
 - [ ] 004.md - Upload endpoint, validation, ProblemDetails (parallel: true)
-- [ ] 005.md - Local-disk repository adapter (DEFERRED — blocked on OQ-1/OQ-2)
 - [ ] 006.md - Unit tests for domain, application and infrastructure (parallel: false)
 - [ ] 007.md - ArchUnitNET architecture rules (parallel: true)
 - [ ] 008.md - BenchmarkDotNet allocation proof (parallel: true)
@@ -236,7 +235,7 @@ streams.
 - [ ] 012.md - Integration tests + raise branch coverage gate to 80% (parallel: false)
 - [ ] 013.md - Implement chosen CQRS mediator on a variant branch (parallel: true)
 
-Total tasks: 14 (13 active, 1 deferred)
+Total tasks: 13 (005 cancelled — OQ-1 answered, nothing is persisted)
 Parallel tasks: 8
 Sequential tasks: 5
 Estimated total effort: ~15.5 hours

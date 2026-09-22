@@ -90,9 +90,14 @@ saying so. Declaring `BufferedRewrite` forces the admission.
 Persistence, audit trails, OpenTelemetry, authentication, rate limiting, queue ingestion,
 blob storage, file query/delete, GDPR/PII handling, BDD tooling, index tuning.
 
-**Why, in one line:** each was traced back to a requirement the ticket does not state. The
-`IFileRepository` port exists so persistence is a later swap rather than a rewrite — that is
-the difference between deferring a decision and ignoring it.
+**Why, in one line:** each was traced back to a requirement the ticket does not state.
+
+**Storage is the one worth calling out**, because the first design kept an `IFileRepository`
+port "so persistence would be a swap rather than a rewrite". That was wrong, and an
+independent review named it: a port with no requirement behind it is not extensibility, it is
+scaffolding — it still has to be wired, tested and explained, and it signals indecision rather
+than restraint. OQ-1 is now answered (nothing is persisted), so the port is gone. The seam
+goes in when a second requirement exists, not before.
 
 **Where:** PRD out-of-scope table (14 rows, each with its reason), PRD open questions OQ-1…4.
 
@@ -100,17 +105,27 @@ the difference between deferring a decision and ignoring it.
 
 **Asked:** add a max file size.
 
-**Decided:** a configurable cap enforced by Kestrel's `MaxRequestBodySize` plus
-`MultipartBodyLengthLimit` — **before the body is read**. Over the limit is 413.
+**Decided:** a whole-request ceiling via Kestrel's `MaxRequestBodySize`, **and independently**
+counting the selected part's bytes while parsing. Over the limit is 413.
 
-**Why the ordering matters:** enforcing a size limit after reading the body means you have
-already paid the cost you were trying to avoid. A caller gets to stream unlimited bytes into
-the process before being told no. Pre-read enforcement is the only version that actually
-protects the resource.
+**Corrected after review — the first version of this was wrong.** It claimed both limits reject
+"before the body is read" and that a downstream length check is therefore dead code. Neither
+holds:
 
-**Consequence:** a length check further down the pipeline is dead code — the framework already
-rejected the request. Writing one anyway is the common mistake, and it looks like defence in
-depth while testing nothing.
+- `MultipartBodyLengthLimit` is enforced *while sections are parsed*, so it can trip after
+  reading has begun.
+- Kestrel cannot pre-reject a chunked request, because its size is not known up front. Only a
+  request declaring `Content-Length` can be refused before reading.
+- The two limits cover different scopes — the whole request versus one part. Setting both to
+  the same nominal file size rejects a valid maximum-size file, because multipart boundaries
+  and headers push the request over.
+
+**What still holds:** rejecting early is worth doing where possible, since it avoids consuming
+bytes you intend to refuse. It is simply not guaranteed, so the part-byte count is real
+enforcement rather than dead code.
+
+**Test accordingly:** a chunked upload with no `Content-Length`, and a file of exactly
+`MaxFileBytes`.
 
 **Where:** PRD FR-5, task 004.
 
@@ -238,7 +253,7 @@ add code, add a thing to test, and signal unfamiliarity with the platform.
 
 **Decided:** that is fine and not a smell.
 
-**Why:** `IFileMutator`, `IFileRepository` and `IRandomSequenceGenerator` each have one
+**Why:** `IFileMutator` and `IRandomSequenceGenerator` each have one
 adapter. A port exists to invert a dependency and keep the core testable, so it is judged by
 whether the dependency needs inverting — not by how many adapters exist. "No interface with
 one implementation" is aimed at speculative generality in application code, not at
