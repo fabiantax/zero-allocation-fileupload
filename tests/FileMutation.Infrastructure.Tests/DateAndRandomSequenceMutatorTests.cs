@@ -1,6 +1,6 @@
 using System.Buffers;
 using System.IO.Pipelines;
-using FileMutation.Domain.Ports;
+using FileMutation.TestCommon;
 using Xunit;
 
 namespace FileMutation.Infrastructure.Tests;
@@ -66,8 +66,8 @@ public sealed class DateAndRandomSequenceMutatorTests
         await using var destination = new RecordingWriteStream();
         using var memoryPool = new TrackingMemoryPool();
         var sut = new DateAndRandomSequenceMutator(
-            new FixedTimeProvider(),
-            new FixedRandomSequenceGenerator(),
+            new FixedTimeProvider(new DateTimeOffset(2026, 9, 22, 23, 59, 58, TimeSpan.Zero)),
+            new FixedRandomSequenceGenerator("0123456789ABCDEF"),
             memoryPool);
 
         await sut.MutateAsync(source, destination);
@@ -88,22 +88,9 @@ public sealed class DateAndRandomSequenceMutatorTests
     }
 
     private static DateAndRandomSequenceMutator CreateMutator() =>
-        new(new FixedTimeProvider(), new FixedRandomSequenceGenerator());
-
-    private sealed class FixedTimeProvider : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() =>
-            new(2026, 9, 22, 23, 59, 58, TimeSpan.Zero);
-    }
-
-    private sealed class FixedRandomSequenceGenerator : IRandomSequenceGenerator
-    {
-        public void Fill(Span<char> destination)
-        {
-            Assert.Equal(DateAndRandomSequenceMutator.RandomSequenceLength, destination.Length);
-            "0123456789ABCDEF".AsSpan().CopyTo(destination);
-        }
-    }
+        new(
+            new FixedTimeProvider(new DateTimeOffset(2026, 9, 22, 23, 59, 58, TimeSpan.Zero)),
+            new FixedRandomSequenceGenerator("0123456789ABCDEF"));
 
     private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
     {
