@@ -1,74 +1,132 @@
 # File Mutation API
 
-A .NET 10 REST API: upload a text file, get it back with the current UTC date and a random
-character sequence appended, downloaded under its original filename. Built for a backend trial
-assignment.
+A .NET 10 REST API that accepts one UTF-8 `.txt` file, appends a newline followed by the
+current UTC date and a 16-character random sequence, and returns the result as a download under
+the submitted filename.
 
-## Status
+The operation is deliberately transient: upload, validate, mutate, return. Nothing is written to
+disk or a database, and there is no storage port. Validation completes before the response starts,
+so an invalid final UTF-8 byte can still produce a 415 instead of a truncated 200. The successful
+response is then streamed with chunked transfer encoding.
 
-Planning complete; implementation starting. Nothing under `src/` yet — the first code lands with
-[#3](../../issues/3), behind a one-hour feasibility spike ([#2](../../issues/2)) that decides
-whether Native AOT survives alongside a browser OpenAPI UI.
+## Run locally
 
-## Why there is more here than a couple of hours of code
+Install .NET SDK `10.0.301`, then from the repository root run:
 
-The brief asks for a couple of hours' work and says the reviewer is *"more interested in your
-problem-solving approach and coding style than in a perfect solution."* This repository is built
-to answer that sentence directly. The feature is small on purpose; what surrounds it is the
-actual submission.
+```bash
+dotnet restore
+dotnet run --project src/FileMutation.Api
+```
 
-That is a deliberate trade, and it has a real cost — an independent review of these documents
-said the planning "misses the assignment's explicit time constraint by roughly an order of
-magnitude." That criticism is fair on its face, so here is the reasoning rather than a defence:
+Open the base URL printed by ASP.NET Core with `/scalar/v1` appended, normally
+<http://localhost:5000/scalar/v1>. The generated OpenAPI document is at
+<http://localhost:5000/openapi/v1.json>.
 
-- **The feature cannot differentiate anything.** Appending a date to a file is thirty lines.
-  Two candidates will submit the same thirty lines. What differs is what they chose *not* to
-  build, and whether their claims are checkable.
-- **The claims are mechanically verified, not asserted.** Clean layering is enforced by
-  ArchUnitNET, allocation behaviour is measured by BenchmarkDotNet, branch coverage is gated in
-  CI. A README saying "adheres to Clean Architecture" is worth nothing; a failing build is
-  worth something.
-- **The reasoning is written down as it happened**, including the parts that turned out wrong.
-  See [`docs/decision-log.md`](docs/decision-log.md), particularly *"Things that changed when
-  checked."*
-- **It is how the work was actually run.** The planning artifacts are agent-executable task
-  specifications, and the process is the demonstration.
+In Scalar, expand `POST /files/mutate`, select **Try it**, and upload a file in the `file` field.
+The accepted input must satisfy all three rules:
 
-If the proportion is wrong for your taste, that judgement is a legitimate outcome of the
-exercise, and the reasoning above is what to argue with.
+- its filename ends in `.txt`;
+- its multipart content type is `text/plain`; and
+- its complete content is valid UTF-8.
 
-## Where to look
+The default maximum file size is 10 MiB. A command-line round trip is:
 
-| If you want to see | Read |
+```bash
+curl --fail-with-body \
+  --form 'file=@example.txt;type=text/plain' \
+  --remote-header-name \
+  --remote-name \
+  http://localhost:5000/files/mutate
+```
+
+The exact base URL can differ if ASP.NET Core environment variables or launch settings override
+the default; use the `Now listening on` address printed by the application.
+
+## Run the tests
+
+```bash
+dotnet test
+```
+
+The suites separate behavior from other claims: unit and HTTP integration tests check results,
+architecture tests enforce dependency direction, branch coverage is the CI coverage metric, and
+allocation benchmarks live outside the coverage-gated test run. See
+[ADR 0007](docs/adr/0007-testing-strategy.md) for the boundaries and their trade-offs.
+
+To verify the public API documentation gate explicitly:
+
+```bash
+dotnet build /p:GenerateDocumentationFile=true -warnaserror:CS1591
+```
+
+## Ticket assumptions and defaults
+
+The source ticket leaves several details unspecified. The implementation makes these defaults
+explicit so they can be changed as product decisions rather than discovered as accidental
+behavior:
+
+| Unspecified detail | Default taken |
 |---|---|
-| Why each design decision was made | [`docs/decision-log.md`](docs/decision-log.md) |
-| The system in three diagrams | [`docs/architecture.md`](docs/architecture.md) |
-| Decisions in full, with alternatives | [`docs/adr/`](docs/adr/) |
-| What was deliberately **not** built | [PRD out-of-scope table](.claude/prds/file-mutation-api.md) |
-| The work breakdown | [Epic #1](../../issues/1) and its 13 sub-issues |
+| What “a text file” means | UTF-8 `.txt` declared as `text/plain`; structured text and other encodings are rejected |
+| What data is appended | `\nyyyy-MM-dd:<sequence>`, using the UTC date and 16 random characters |
+| File field and cardinality | Exactly one non-empty file part named `file`; other multipart fields are ignored |
+| Maximum upload | 10 MiB for the file plus 64 KiB request-framing headroom, both configurable under `Upload` |
+| Filename promise | Return the submitted safe basename; path separators, control characters, blank names, `.` and `..` are rejected |
+| Response delivery | Synchronous, chunked download; no later retrieval and no persisted copy |
+| Error shape | Application-generated errors before the response starts use RFC 7807 `ProblemDetails`; transport or post-start failures may terminate without one |
+| Expected load | Tens of concurrent uploads, with pooled memory per request bounded by the configured file limit |
+| Personal or regulated data | None assumed; no compliance or immutable-audit subsystem is included |
+| Evaluation access | No authentication in the trial; a production authentication model needs an explicit decision |
 
-## Known open issues
+The accepted-format choice is recorded in
+[ADR 0009](docs/adr/0009-accepted-formats-and-mutator-dispatch.md), and the precise allocation
+claim is in [ADR 0005](docs/adr/0005-streaming-allocation-strategy.md).
 
-Honest list, rather than a clean surface:
+## Questions for the product owner
 
-1. **Late validation cannot return 415.** The design streams mutated bytes while still
-   validating UTF-8, then promises a `ProblemDetails` on failure — impossible once the response
-   has started. Three resolutions are documented at the top of
-   [`docs/architecture.md`](docs/architecture.md); none is chosen yet.
-2. **Native AOT is proven but parked.** [#2](../../issues/2) published a native binary that
-   served the OpenAPI document and Scalar UI with zero trim warnings (13.15 MiB, 17.6 ms median
-   cold start). It is deliberately **not enabled**: setting `PublishAot` runs the analyzers on
-   every build and cost a five-minute cold build, and a fast inner loop is worth more than a
-   startup optimisation nobody asked for. See `docs/adr/0001-native-aot.md`.
-3. **OQ-2 (audit trail / regulated context) is unanswered.** Default taken: out of scope.
+These are the remaining clarifications worth raising. Work proceeds with the stated default until
+the answer changes it.
 
-## Scope
+| Question | Default taken |
+|---|---|
+| Is this a regulated workflow requiring immutable audit evidence and operational tracing? | No. Nothing is persisted and no audit trail is produced |
+| What concurrency and upload-size distribution should production support? | Tens of concurrent requests; 10 MiB maximum per file |
+| What authentication and authorization model applies in production? | None for the evaluation endpoint; do not guess a production identity model |
+| Is an empty `.txt` a valid file? | No. The current endpoint returns 400 for an empty file part |
 
-Accepted: `.txt`, declared `text/plain`, decodable as UTF-8. Everything else is rejected with
-415 — including files that decode perfectly well, such as `.json` and `.csv`, because appending
-a date to them produces structurally invalid output that still looks like success.
+Persistence is not an open implementation placeholder: the product decision for this version is
+**no persistence**. If that decision changes, the audit/storage semantics must be designed before
+adding a port; see [ADR 0008](docs/adr/0008-persistence-deferral.md).
 
-Nothing is persisted. Upload, mutate, return; the bytes go to the response and are then gone.
+## Design record
+
+| Topic | Record |
+|---|---|
+| Decisions and corrections as the design evolved | [Decision log](docs/decision-log.md) |
+| System structure and request flow | [Architecture](docs/architecture.md) |
+| Native AOT: proven, then parked | [ADR 0001](docs/adr/0001-native-aot.md) |
+| Scope and deliberate exclusions | [ADR 0003](docs/adr/0003-scope-and-out-of-scope.md) |
+| Four-project structure, ports, and no aggregate root | [ADR 0004](docs/adr/0004-solution-structure-ddd-ports.md) |
+| Streaming, buffering, and allocation claim | [ADR 0005](docs/adr/0005-streaming-allocation-strategy.md) |
+| Built-in OpenAPI plus Scalar | [ADR 0006](docs/adr/0006-openapi-scalar.md) |
+| Test, architecture, coverage, and benchmark boundaries | [ADR 0007](docs/adr/0007-testing-strategy.md) |
+| No persistence and no repository port | [ADR 0008](docs/adr/0008-persistence-deferral.md) |
+| Accepted format and the deleted dispatch abstractions | [ADR 0009](docs/adr/0009-accepted-formats-and-mutator-dispatch.md) |
+
+The full independent critique is retained at
+[docs/reviews/2026-09-22-independent-design-review.md](docs/reviews/2026-09-22-independent-design-review.md),
+including findings that changed the design.
+
+## Contributing
+
+Enable the repository's pre-commit checks once per clone:
+
+```bash
+git config core.hooksPath hooks
+```
+
+The hook enforces issue traceability and prevents client-identifying terms from entering this
+public repository. Run the build and tests before submitting a change.
 
 ## Reproducing the benchmarks
 

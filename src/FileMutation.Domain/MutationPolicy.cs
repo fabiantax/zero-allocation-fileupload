@@ -3,6 +3,10 @@ using System.Text;
 
 namespace FileMutation.Domain;
 
+/// <summary>
+/// Defines the pure formatting rule for the suffix appended to an accepted file.
+/// See <see href="../../docs/adr/0004-solution-structure-ddd-ports.md">ADR 0004</see>.
+/// </summary>
 public static class MutationPolicy
 {
     private const int FixedSuffixByteCount = 12;

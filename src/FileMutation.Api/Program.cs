@@ -52,4 +52,8 @@ app.Run();
 [JsonSerializable(typeof(ProblemDetails))]
 internal partial class ApiJsonSerializerContext : JsonSerializerContext;
 
+/// <summary>
+/// Provides the application entry point used by the host and integration-test factory.
+/// See <see href="../../docs/adr/0006-openapi-scalar.md">ADR 0006</see>.
+/// </summary>
 public partial class Program;

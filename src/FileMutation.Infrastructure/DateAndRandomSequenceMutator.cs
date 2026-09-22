@@ -7,6 +7,7 @@ namespace FileMutation.Infrastructure;
 
 /// <summary>
 /// Streams a file unchanged, then appends <c>\nyyyy-MM-dd:sequence</c> using the domain policy.
+/// See <see href="../../docs/adr/0005-streaming-allocation-strategy.md">ADR 0005</see>.
 /// </summary>
 public sealed class DateAndRandomSequenceMutator : IFileMutator
 {
