@@ -6,7 +6,7 @@ namespace FileMutation.Application;
 
 /// <summary>
 /// Applies the single HTTP-independent acceptance rule for uploaded files.
-/// See <see href="../../README.md#accepted-format-and-dispatch-boundary">the accepted-format boundary</see>.
+/// See <see href="../../docs/assumptions.md#accepted-format-and-dispatch-boundary">the accepted-format boundary</see>.
 /// </summary>
 public static class FileAcceptance
 {

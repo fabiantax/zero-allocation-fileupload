@@ -10,6 +10,14 @@ reference neither Infrastructure nor Api. `FileMutation.Architecture.Tests` enfo
 this with ArchUnitNET for type-level dependencies, plus a `.csproj` reference check. ArchUnitNET
 analyses compiled type usage, so an unused-but-forbidden project reference would otherwise pass.
 
+If you know the pattern by name, this is Clean Architecture's dependency rule, combined with
+ports and adapters. The mapping to the familiar circles: `Domain` is the entities layer,
+`Application` the use cases, `Infrastructure` the interface adapters, `Api` the frameworks and
+drivers ring. What was taken from the pattern is the rule (dependencies point inward, the core
+knows no framework), not the ceremony: there is no aggregate root, no repository abstraction,
+and no use-case interface for the single use case, each omission recorded in
+[ADR 0004](adr/0004-solution-structure-ddd-ports.md).
+
 ```mermaid
 graph TB
     subgraph consumers["Consumers"]
@@ -96,7 +104,6 @@ sequenceDiagram
     else accepted for reading
         K->>E: forward request
 
-        rect rgb(245,245,245)
         note over E,A: PHASE 1: read and validate. No response written yet.
         loop each pooled pipe segment
             E->>E: buffer segment · count part bytes
@@ -104,7 +111,6 @@ sequenceDiagram
         end
         E->>A: check .txt, text/plain, decoded cleanly
         A-->>E: Result
-        end
 
         alt part exceeded the byte limit
             E-->>C: 413 ProblemDetails
@@ -113,14 +119,12 @@ sequenceDiagram
         else not an accepted format
             E-->>C: 415 ProblemDetails
         else accepted
-            rect rgb(245,245,245)
             note over E,D: PHASE 2: respond. Status is committed from here.
             E->>M: Mutate(buffered content) through IFileMutator
             M->>D: append into span: utcNow, randomSequence
             D-->>M: bytes written
             M-->>E: mutated content
             E-->>C: 200 + Content-Disposition, original filename
-            end
         end
     end
 ```
