@@ -48,11 +48,11 @@ The default maximum file size is 10 MiB, plus 64 KiB for multipart framing. To o
 limit, add `Upload:MaxFileBytes` and/or `Upload:MaxRequestOverheadBytes` to configuration (such
 as `appsettings.json`); omitting either value uses the code default.
 
-A command-line round trip is:
+A command-line round trip is (the repo ships a [`test.txt`](test.txt) you can upload through the Scalar UI at `/scalar`, or from the command line):
 
 ```bash
 curl --fail-with-body \
-  --form 'file=@example.txt;type=text/plain' \
+  --form 'file=@test.txt;type=text/plain' \
   --remote-header-name \
   --remote-name \
   http://localhost:5000/files/mutate

@@ -1,0 +1,4 @@
+The quick brown fox jumps over the lazy dog.
+
+This is a sample plain-text file for the upload round trip.
+The API appends the current UTC date and a random sequence below this line.
