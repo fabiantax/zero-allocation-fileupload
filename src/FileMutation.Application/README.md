@@ -8,7 +8,7 @@ orchestration stay usable from a console app, a queue consumer, or a test.
 | File | Role |
 |---|---|
 | `FileAcceptance.cs` | Is this file acceptable? Bytes + declared metadata in, result out. Handles multi-segment `ReadOnlySequence<byte>` without flattening |
-| `SingleFileMutationService.cs` | Read → validate → mutate for exactly one file. Returns a `FileMutationResult`; per-file failure is a reason, not an exception |
+| `SingleFileMutationService.cs` | Read → validate → mutate for exactly one file, behind `ISingleFileMutationService` (the DI seam the endpoint consumes). Returns a `FileMutationResult`; per-file failure is a reason, not an exception |
 | `PooledFileContent.cs` | Bounded buffered content in pooled pipe segments |
 
 **Never here:** `HttpContext`, `IResult`, multipart parsing, response writing.
