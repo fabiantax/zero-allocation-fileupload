@@ -17,7 +17,7 @@ public sealed class LayeringRules
 {
     private static readonly ReflectionAssembly DomainAssembly = typeof(FileName).Assembly;
     private static readonly ReflectionAssembly ApplicationAssembly = typeof(FileAcceptance).Assembly;
-    private static readonly ReflectionAssembly InfrastructureAssembly = typeof(DateAndRandomSequenceMutator).Assembly;
+    private static readonly ReflectionAssembly InfrastructureAssembly = typeof(ServiceCollectionExtensions).Assembly;
     private static readonly ReflectionAssembly ApiAssembly = typeof(MutateFileRequest).Assembly;
 
     private static readonly ArchitectureModel Architecture = new ArchLoader()

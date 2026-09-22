@@ -10,7 +10,7 @@ namespace FileMutation.Api.ExceptionHandling;
 /// </summary>
 /// <param name="logger">The application logger.</param>
 /// <param name="problemDetailsService">The framework problem-details writer.</param>
-public sealed class ProblemDetailsExceptionHandler(
+internal sealed class ProblemDetailsExceptionHandler(
     ILogger<ProblemDetailsExceptionHandler> logger,
     IProblemDetailsService problemDetailsService) : IExceptionHandler
 {

@@ -1,7 +1,5 @@
-using System.Buffers;
-using System.IO.Pipelines;
 using FileMutation.Application;
-using FileMutation.Domain.Ports;
+using FileMutation.Api.Contracts;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
@@ -12,7 +10,7 @@ namespace FileMutation.Api.Endpoints;
 /// Configured ceilings for one upload: the file itself, plus multipart framing overhead.
 /// Settable properties with a parameterless constructor because <c>IOptions</c> binds that way.
 /// </summary>
-public sealed class UploadLimits
+internal sealed class UploadLimits
 {
     /// <summary>The largest accepted file, in bytes.</summary>
     public long MaxFileBytes { get; set; } = 10 * 1024 * 1024;
@@ -27,17 +25,16 @@ public sealed class UploadLimits
 /// <see href="../../../docs/adr/0005-streaming-allocation-strategy.md">ADR 0005</see> for the
 /// two-phase ordering this endpoint exists to guarantee.
 /// </summary>
-public static class FileMutateEndpoint
+internal static class FileMutateEndpoint
 {
-    private const int SegmentSize = 16 * 1024;
     private const string FileFieldName = "file";
 
     /// <summary>Maps <c>POST /files/mutate</c> and its OpenAPI response contract.</summary>
-    public static RouteHandlerBuilder MapFileMutateEndpoint(this IEndpointRouteBuilder endpoints)
+    internal static RouteHandlerBuilder MapFileMutateEndpoint(this IEndpointRouteBuilder endpoints)
     {
         return endpoints.MapPost("/files/mutate", ExecuteAsync)
             .WithName("MutateFile")
-            .Accepts<IFormFile>("multipart/form-data")
+            .Accepts<MutateFileRequest>("multipart/form-data")
             .Produces(StatusCodes.Status200OK, contentType: "text/plain")
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
@@ -46,13 +43,12 @@ public static class FileMutateEndpoint
 
     private static async Task<IResult> ExecuteAsync(
         HttpContext httpContext,
-        IFileMutator fileMutator,
+        SingleFileMutationService fileMutationService,
         IOptions<UploadLimits> uploadLimits,
         CancellationToken cancellationToken)
     {
         var limits = uploadLimits.Value;
         var request = httpContext.Request;
-
         if (request.ContentLength > limits.MaxFileBytes + limits.MaxRequestOverheadBytes)
         {
             return Problem(StatusCodes.Status413PayloadTooLarge, "The upload exceeds the configured size limit.");
@@ -63,142 +59,98 @@ public static class FileMutateEndpoint
             return Problem(StatusCodes.Status400BadRequest, "The request must be multipart/form-data.");
         }
 
-        // PHASE 1 — read the whole upload into pooled segments. Nothing is written to the response
-        // yet, so every rejection below can still choose its own status code.
-        var upload = new Pipe(new PipeOptions(
-            minimumSegmentSize: SegmentSize,
-            pauseWriterThreshold: limits.MaxFileBytes + 1,
-            resumeWriterThreshold: limits.MaxFileBytes));
-
-        string? fileName = null;
-        string? contentType = null;
-        var fileParts = 0;
-        long fileBytes = 0;
-
+        FileMutationResult? mutationResult = null;
         try
         {
-            // No BodyLengthLimit: the size rule is enforced below by counting, so there is exactly
-            // one place that decides 413 and no exception message to pattern-match.
-            var multipart = new MultipartReader(boundary, request.Body);
-
-            while (await multipart.ReadNextSectionAsync(cancellationToken) is { } section)
+            try
             {
-                if (!TryGetFileMetadata(section, out var sectionFileName, out var sectionContentType))
+                var multipart = new MultipartReader(boundary, request.Body);
+                var fileParts = 0;
+                while (await multipart.ReadNextSectionAsync(cancellationToken) is { } section)
                 {
-                    continue; // ponytail: non-file parts are ignored rather than rejected.
-                }
-
-                if (++fileParts > 1)
-                {
-                    return Problem(StatusCodes.Status400BadRequest, $"Supply exactly one file part named '{FileFieldName}'.");
-                }
-
-                fileName = sectionFileName;
-                contentType = sectionContentType;
-
-                var sectionReader = PipeReader.Create(
-                    section.Body,
-                    new StreamPipeReaderOptions(bufferSize: SegmentSize, leaveOpen: true));
-                try
-                {
-                    while (true)
+                    if (!TryGetFileMetadata(section, out var fileName, out var contentType))
                     {
-                        var read = await sectionReader.ReadAsync(cancellationToken);
-                        fileBytes += read.Buffer.Length;
-
-                        // Counted here rather than trusted to MultipartReader.BodyLengthLimit: the
-                        // limit is the rule, so the rule is enforced where it can be seen.
-                        if (fileBytes > limits.MaxFileBytes)
-                        {
-                            sectionReader.AdvanceTo(read.Buffer.Start, read.Buffer.End);
-                            return Problem(StatusCodes.Status413PayloadTooLarge, "The upload exceeds the configured size limit.");
-                        }
-
-                        foreach (var segment in read.Buffer)
-                        {
-                            upload.Writer.Write(segment.Span);
-                        }
-
-                        sectionReader.AdvanceTo(read.Buffer.End);
-                        if (read.IsCompleted)
-                        {
-                            break;
-                        }
+                        continue; // Non-file parts are ignored rather than rejected.
                     }
 
-                    await upload.Writer.FlushAsync(cancellationToken);
-                }
-                finally
-                {
-                    await sectionReader.CompleteAsync();
+                    if (++fileParts > 1)
+                    {
+                        return Problem(StatusCodes.Status400BadRequest, $"Supply exactly one file part named '{FileFieldName}'.");
+                    }
+                    await DisposeResultAsync(mutationResult);
+
+                    mutationResult = await fileMutationService.MutateAsync(
+                        section.Body, fileName, contentType, limits.MaxFileBytes, cancellationToken);
                 }
             }
-        }
-        // MultipartReader signals a malformed body as InvalidDataException, and a truncated or
-        // empty one as IOException ("Unexpected end of Stream"). Both are the client's mistake.
-        catch (Exception exception) when (exception is InvalidDataException or IOException)
-        {
-            return Problem(StatusCodes.Status400BadRequest, "The multipart request is malformed.");
-        }
-        finally
-        {
-            await upload.Writer.CompleteAsync();
-        }
+            catch (InvalidDataException)
+            {
+                return Problem(StatusCodes.Status400BadRequest, "The multipart request is malformed.");
+            }
+            catch (IOException)
+            {
+                return Problem(StatusCodes.Status400BadRequest, "The multipart request is malformed.");
+            }
 
-        var buffered = await upload.Reader.ReadAsync(cancellationToken);
-        var content = buffered.Buffer;
+            if (mutationResult is null)
+            {
+                return Problem(StatusCodes.Status400BadRequest, $"Supply exactly one non-empty file part named '{FileFieldName}'.");
+            }
 
-        if (fileParts == 0 || content.IsEmpty)
-        {
-            await upload.Reader.CompleteAsync();
-            return Problem(StatusCodes.Status400BadRequest, $"Supply exactly one non-empty file part named '{FileFieldName}'.");
-        }
+            if (!mutationResult.IsAccepted)
+            {
+                return ProblemFor(mutationResult);
+            }
 
-        // The acceptance decision is an Application rule over bytes and declared metadata. It knows
-        // no HTTP; the endpoint only maps its result onto a status code.
-        var acceptance = FileAcceptance.Evaluate(in content, fileName, contentType);
-        if (!acceptance.IsAccepted)
-        {
-            await upload.Reader.CompleteAsync();
-            var reason = acceptance.RejectionReason!.Value;
-            return Problem(StatusFor(reason), DetailFor(reason));
-        }
-
-        // PHASE 2 — the status line is committed from here. Nothing below may reject.
-        upload.Reader.AdvanceTo(content.Start, content.End);
-
-        var response = httpContext.Response;
-        response.ContentType = "text/plain";
-        var disposition = new ContentDispositionHeaderValue("attachment");
-        disposition.SetHttpFileName(acceptance.FileName!.Value);
-        response.Headers.ContentDisposition = disposition.ToString();
-
-        try
-        {
-            await fileMutator.MutateAsync(
-                upload.Reader.AsStream(leaveOpen: true),
-                response.BodyWriter.AsStream(leaveOpen: true),
-                cancellationToken);
+            // PHASE 2 — validation and mutation completed, so the status line can now be committed.
+            var response = httpContext.Response;
+            response.ContentType = "text/plain";
+            var disposition = new ContentDispositionHeaderValue("attachment");
+            disposition.SetHttpFileName(mutationResult.FileName!.Value);
+            response.Headers.ContentDisposition = disposition.ToString();
+            await mutationResult.Content.CopyToAsync(response.Body, cancellationToken);
+            return Results.Empty;
         }
         finally
         {
-            await upload.Reader.CompleteAsync();
+            await DisposeResultAsync(mutationResult);
         }
-
-        return Results.Empty;
     }
 
-    private static int StatusFor(FileRejectionReason reason) => reason switch
+    private static IResult ProblemFor(FileMutationResult result)
     {
-        FileRejectionReason.InvalidFileName => StatusCodes.Status400BadRequest,
+        if (result.FailureReason == FileMutationFailureReason.MutationFailed)
+        {
+            throw new InvalidOperationException("The configured file mutator failed.");
+        }
+
+        return Problem(StatusFor(result), DetailFor(result));
+    }
+
+    private static ValueTask DisposeResultAsync(FileMutationResult? result) =>
+        result?.DisposeAsync() ?? ValueTask.CompletedTask;
+
+    private static int StatusFor(FileMutationResult result) => result switch
+    {
+        { FailureReason: FileMutationFailureReason.TooLarge } => StatusCodes.Status413PayloadTooLarge,
+        { FailureReason: FileMutationFailureReason.Rejected, AcceptanceReason: FileRejectionReason.InvalidFileName }
+            => StatusCodes.Status400BadRequest,
+        { FailureReason: FileMutationFailureReason.Empty or FileMutationFailureReason.Unreadable }
+            => StatusCodes.Status400BadRequest,
         _ => StatusCodes.Status415UnsupportedMediaType
     };
 
-    private static string DetailFor(FileRejectionReason reason) => reason switch
+    private static string DetailFor(FileMutationResult result) => result switch
     {
-        FileRejectionReason.InvalidFileName => "The file name is missing or not a valid file name.",
-        FileRejectionReason.UnsupportedFileExtension => "Only .txt files are accepted.",
-        FileRejectionReason.UnsupportedContentType => "Only text/plain content is accepted.",
+        { FailureReason: FileMutationFailureReason.TooLarge } => "The upload exceeds the configured size limit.",
+        { FailureReason: FileMutationFailureReason.Empty } => $"Supply exactly one non-empty file part named '{FileFieldName}'.",
+        { FailureReason: FileMutationFailureReason.Unreadable } => "The multipart request is malformed.",
+        { FailureReason: FileMutationFailureReason.Rejected, AcceptanceReason: FileRejectionReason.InvalidFileName }
+            => "The file name is missing or not a valid file name.",
+        { FailureReason: FileMutationFailureReason.Rejected, AcceptanceReason: FileRejectionReason.UnsupportedFileExtension }
+            => "Only .txt files are accepted.",
+        { FailureReason: FileMutationFailureReason.Rejected, AcceptanceReason: FileRejectionReason.UnsupportedContentType }
+            => "Only text/plain content is accepted.",
         _ => "The uploaded file is not valid UTF-8 text."
     };
 

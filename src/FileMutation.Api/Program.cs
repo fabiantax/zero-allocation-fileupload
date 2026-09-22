@@ -1,7 +1,8 @@
 using System.Text.Json.Serialization;
+using FileMutation.Api;
 using FileMutation.Api.Endpoints;
 using FileMutation.Api.ExceptionHandling;
-using FileMutation.Domain.Ports;
+using FileMutation.Application;
 using FileMutation.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -39,8 +40,8 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IRandomSequenceGenerator, CryptoRandomSequenceGenerator>();
-builder.Services.AddSingleton<IFileMutator, DateAndRandomSequenceMutator>();
+builder.Services.AddFileMutationInfrastructure();
+builder.Services.AddSingleton<SingleFileMutationService>();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, ApiJsonSerializerContext.Default));
 builder.Services.AddOpenApi();
@@ -52,13 +53,22 @@ app.MapScalarApiReference();
 app.UseExceptionHandler();
 app.MapFileMutateEndpoint();
 
-app.Run();
+await app.RunAsync();
 
-[JsonSerializable(typeof(ProblemDetails))]
-internal partial class ApiJsonSerializerContext : JsonSerializerContext;
+namespace FileMutation.Api
+{
+    [JsonSerializable(typeof(ProblemDetails))]
+    internal partial class ApiJsonSerializerContext : JsonSerializerContext;
+}
 
 /// <summary>
 /// Provides the application entry point used by the host and integration-test factory.
 /// See <see href="../../docs/adr/0006-openapi-scalar.md">ADR 0006</see>.
 /// </summary>
-public partial class Program;
+public partial class Program
+{
+    /// <summary>Supports type references from the integration-test host; never instantiated directly.</summary>
+    protected Program()
+    {
+    }
+}
