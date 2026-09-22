@@ -60,6 +60,33 @@ This repository is a public technical trial, but commercial-library eligibility 
 client rather than to this codebase. Adopting MediatR would therefore require explicit client
 procurement confirmation before deployment, even if the current project appeared to qualify.
 
+## Community health of the two third-party candidates
+
+Numbers fetched from the GitHub API on 2026-09-22. A dependency's maintenance reality is as much a
+procurement fact as its licence text; these figures are what the API reported on that date, not a
+trend analysis.
+
+| Signal | [MediatR](https://github.com/LuckyPennySoftware/MediatR) | [Wolverine](https://github.com/JasperFx/wolverine) |
+|---|---:|---:|
+| Stars | 11,860 | 2,356 |
+| Forks | 2,183 | 380 |
+| Contributors (incl. anonymous) | 92 | 227 |
+| Open issues | 0 | 49 |
+| Latest release | v14.2.0 (2026-07-02) | V6.39.1 (2026-09-19) |
+| Last push | 2026-07-02 | 2026-09-20 |
+| Created | 2014 | 2022 |
+| Archived | no | no |
+
+Both are alive. MediatR shows the larger user base and zero open issues, but its last release and
+push are roughly two and a half months old at the time of checking — consistent with a mature
+library in maintenance mode rather than active development. Wolverine is younger and far more
+active, with a broader contributor base relative to its size, at the cost of an issue tracker that
+reflects a project still moving quickly. Neither figure changes the decision above: they describe
+the cost of *adopting* a dependency at all, and the finding here is that there is no dispatch
+problem that justifies one. The hand-rolled option has no row in this table — its maintainer,
+contributor and issue tracker would be this repository itself, which is exactly the "code we own
+forever" cost listed under Consequences.
+
 ## Decision
 
 **Winner:** the hand-rolled `IRequest`/`IRequestHandler` dispatcher wins the paper comparison,
