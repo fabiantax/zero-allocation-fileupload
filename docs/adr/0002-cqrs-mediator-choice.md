@@ -1,5 +1,25 @@
 # 2. CQRS and mediator choice
 
+## TL;DR
+
+Three candidates were compared on paper for dispatching this API's single command:
+MediatR, a hand-rolled dispatcher, and Wolverine's local command bus. The hand-rolled
+dispatcher wins the comparison, but nothing is adopted: with one command, one handler,
+and zero event listeners, a mediator is indirection whose convention has no second
+participant. The direct endpoint-to-port call stays. The addendum below records when
+each capability would start paying, and the triggers that would reopen this decision.
+
+## Feature map
+
+| Capability | What it is | Earns its keep when | This codebase today |
+|---|---|---|---|
+| Command dispatch (`Send`) | One entry convention for every request type | Dozens of request types; adding one means adding a class, not editing the composition root | One command. No convention to share |
+| Pipeline behaviors | Decorator chain applying validation, audit, transactions, caching, idempotency to every handler | About three or more use cases sharing two or more concerns | One use case; acceptance lives as a plain Application rule already |
+| Handler discovery | Convention or assembly scanning finds handlers | Feature teams ship vertical slices in parallel without touching shared wiring | One contributor, one composition root |
+| Event publish/subscribe | A handler announces; any number of subscribers react | The first real listener exists (CDN invalidator, pipeline stage, indexer) | Zero listeners; a published event would be silence |
+| Orchestration runtime (sagas, outbox, retries) | Durable state and error policies for multi-step workflows | The process outlives the request or spans systems | Synchronous transient operation; nothing persists |
+| CQRS read/write split | Separate models for reads and writes | The read path evolves independently of writes | No read model exists |
+
 ## Status
 
 **Accepted, research-only**: 2026-09-22. No mediator is implemented; the ADR is the complete
