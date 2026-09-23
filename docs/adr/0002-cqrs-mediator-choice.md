@@ -185,6 +185,42 @@ validation and audit logging, which is exactly the pipeline-behavior shape above
 repeated per service. None of that is hypothetical architecture to build now; it is the
 picture that tells a reviewer the dismissal is informed rather than reflexive.
 
+How the pieces would slot into the existing layers. Solid lines are the request path a
+mediator would introduce; dashed lines exist only once someone listens. Domain and its
+`IFileMutator` port are unchanged: the mediator sits between the endpoint and the seams
+that already exist.
+
+```mermaid
+flowchart LR
+    EP["FileMutateEndpoint<br/>(Api layer)"]
+    MED(("Send / IMediator"))
+    BHV["Pipeline behaviors<br/>validation · audit · idempotency"]
+    H["Command handler:<br/>MutateFileHandler"]
+    ACC["FileAcceptance<br/>(Application)"]
+    P1(["IFileMutator<br/>(Domain, unchanged)"])
+    MUT["DateAndRandomSequenceMutator<br/>(Infrastructure)"]
+    EVT["FileMutated event"]
+    SUBS["Subscribers:<br/>CDN invalidator · indexer · pipeline stage"]
+    RM["Read model / projection"]
+    QH["Query handlers"]
+
+    EP -->|"today: direct"| ACC
+    EP --> MED --> BHV --> H
+    H --> ACC
+    H --> P1
+    MUT -. implements .-> P1
+    H -. publishes .-> EVT
+    EVT -.-> SUBS
+    EVT -.-> RM
+    EP --> QH
+    QH --> RM
+```
+
+Reads and writes split at the dispatcher: commands flow through behaviors to the
+mutation seams above; queries answer from the projection, which the event keeps fresh.
+That split is what the letters in CQRS name, and it is exactly the part with no
+divergence to manage while there is no read model.
+
 **The costs scale too.** Every benefit above is an indirection: stack traces pass
 through the dispatcher, behavior ordering becomes architecture that someone must own,
 and the dependency brings its licence and upgrade lifecycle. A large solution that
