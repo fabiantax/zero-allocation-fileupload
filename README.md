@@ -148,9 +148,6 @@ reasoning on a dedicated page: [docs/assumptions.md](docs/assumptions.md). In sh
 | Test, architecture, coverage, and benchmark boundaries | [ADR 0007](docs/adr/0007-testing-strategy.md) |
 | No persistence and no repository port | [ADR 0008](docs/adr/0008-persistence-deferral.md) |
 
-An independent review on 2026-09-22 caught the two-phase ordering defect before implementation;
-its adopted finding is recorded in ADR 0005.
-
 ## Contributing
 
 Enable the repository's pre-commit checks once per clone:
