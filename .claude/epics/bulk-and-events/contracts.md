@@ -193,6 +193,8 @@ public sealed class BatchFileResult : IAsyncDisposable
 Entry-name rule: the first `a.txt` keeps its name; later ones become `a (2).txt`, `a (3).txt`,
 compared ordinal-ignore-case. The chosen name goes into `EntryName` and `FileMutated`.
 
+Lifecycle rule: `MutateNextAsync` throws `InvalidOperationException` once the batch has completed or aborted; only `Complete`, `Abort` and `DisposeAsync` stay callable (and are no-ops after the first terminal event).
+
 ## Application: `src/FileMutation.Application/Batches/BatchStatusProjection.cs` (story 007)
 
 ```csharp

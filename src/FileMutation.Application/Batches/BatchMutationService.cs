@@ -22,6 +22,7 @@ public sealed class BatchMutationService(
     {
         ArgumentNullException.ThrowIfNull(limits);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limits.MaxFileBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limits.ChunkSize);
         return new BatchMutationSession(BatchId.New(), limits, files, publisher, time);
     }
 }
