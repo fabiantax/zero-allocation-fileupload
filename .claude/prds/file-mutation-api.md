@@ -64,6 +64,46 @@ Acceptance criteria:
 - [ ] Allocation behaviour measured by BenchmarkDotNet `[MemoryDiagnoser]`, with results recorded
 - [ ] CI blocks merge when build, tests, or the coverage gate fail
 
+### v0.3 (self-set extension, not a client requirement)
+
+The client's ticket ends at US-3. The stories below extend the service on my own initiative;
+they are tracked in the `bulk-and-events` epic and decided in
+[ADR 0011](../../docs/adr/0011-bulk-upload-contract.md) and
+[ADR 0012](../../docs/adr/0012-batch-events-and-read-model.md). `POST /files/mutate` does not
+change.
+
+### US-4: Mutate many files in one request
+**As a** consuming system
+**I want to** upload many text files in one request and get them all back mutated
+**So that** a folder of files does not need one round trip per file.
+
+Acceptance criteria:
+- [ ] `POST /files/mutate/batch` accepts a repeated `files` part and returns a streamed ZIP with one entry per accepted file and `manifest.json` last
+- [ ] A rejected or failed file is a manifest row with a reason code; the other files still arrive and the status stays 200
+- [ ] Request-level problems (not multipart, no files, body over the batch limit, too many concurrent batches) return `ProblemDetails` before the first byte
+- [ ] One file is in memory at a time; per-file allocation is flat from 1 to 100 files
+
+### US-5: Chain work after a file, a chunk, or a batch
+**As a** developer extending the service
+**I want** events after each file, each chunk of files, and each finished or aborted batch
+**So that** follow-up work can be attached without changing the endpoint.
+
+Acceptance criteria:
+- [ ] `FileMutated`, `FileRejected`, `BatchChunkCompleted`, `BatchCompleted` and `BatchAborted` are published with per-batch sequence numbers
+- [ ] `AddEventHandler<TEvent, THandler>()` registers a handler without reflection
+- [ ] A throwing or slow handler changes neither the upload's status nor its latency, and the host keeps running
+- [ ] Exactly one terminal event per batch, and terminal events are never dropped
+
+### US-6: See a batch's progress
+**As a** caller who submitted a batch
+**I want to** query its progress by id
+**So that** another process can tell whether the batch completed.
+
+Acceptance criteria:
+- [ ] `GET /batches/{id}` returns state and counts, never file names, for the id in the batch response's `X-Batch-Id` header
+- [ ] Unknown or expired ids return 404; malformed ids return 400
+- [ ] The read model is bounded in size and forgets a batch after a configured time
+
 ## Functional Requirements
 
 | # | Requirement |
@@ -138,7 +178,7 @@ OQ-2 is the remaining high-value clarification for the product owner. OQ-1 is se
 | OpenTelemetry / distributed tracing | Not implemented | Only justified alongside the audit-trail requirement above; no observability requirement stated |
 | Queue / ServiceBus ingestion and throttling | Assumed external | API is synchronous request/response; the ticket describes no queued ingestion |
 | Any storage — database, disk, or object store | Not implemented; nothing is written anywhere | The ticket is upload → mutate → return. The mutated bytes go to the response and are then gone. No EF Core, no SQLite, no `data/` directory, and no repository port held open "just in case" |
-| Rate limiting | Not implemented | No abuse or multi-tenancy concern stated; a production concern rather than an exercise one |
+| Rate limiting | Not implemented for `POST /files/mutate`; a concurrency limit on the v0.3 batch endpoint only | No abuse or multi-tenancy concern stated for one-file requests. A batch request can hold a worker for up to 100 files, so it gets a bounded concurrency limit (ADR 0011) |
 | Authentication / authorization | Not implemented; documented as an Entra ID/JWT decision for production | Ticket describes uploading "through the Swagger UI", implying open access for evaluation |
 | GDPR / PII handling | Not implemented | No personal data mentioned in file contents; assumed plain text without PII |
 | Gherkin / BDD test layer | Not implemented | Plain unit and integration tests are proportionate; BDD tooling adds process overhead without adding signal here |
@@ -154,3 +194,13 @@ OQ-2 is the remaining high-value clarification for the product owner. OQ-1 is se
 - ArchUnitNET (architecture rules), xUnit, coverlet + ReportGenerator (coverage), BenchmarkDotNet (allocation)
 - GitHub Actions for CI; branch protection on `main` with required checks
 - CQRS variant only: MediatR (commercial licence since v13 — free tier under $5M revenue), or a hand-rolled mediator, or Wolverine
+
+### v0.3 out of scope
+
+| Question / concern | Answer | Why out of scope |
+|---|---|---|
+| Durable event delivery (outbox, broker, retries) | Not implemented; in-process, at-most-once, lost on crash | Needs storage, which ADR 0008 rules out; nothing in v0.3 must survive a restart (ADR 0012) |
+| Event handlers that read or change file content | Not implemented | Events run after the upload, when the bytes are gone; a content step belongs inside the stream (ADR 0012) |
+| `202 Accepted` with a later download | Not implemented | The mutated files would have to be stored between requests (ADR 0008, ADR 0011) |
+| A metrics listener as an event subscriber | Not implemented; publisher and dispatcher emit counters directly | The read model is the listener a caller can use (ADR 0012) |
+| Authentication on batch status | Not implemented; ids are 128 random bits and the response carries counts only | Same posture as OQ-4; no file names leak through a guessed id |
