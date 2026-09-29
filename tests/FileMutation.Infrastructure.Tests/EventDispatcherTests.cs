@@ -54,7 +54,7 @@ public sealed class EventDispatcherTests : IAsyncLifetime
         _listener.Dispose();
         if (_host is not null)
         {
-            // Stopping cancels the token the slow handler waits on.
+            // Stopping cancels the token the slow and gated handlers wait on.
             await _host.StopAsync(Timeout);
             _host.Dispose();
         }
@@ -117,6 +117,122 @@ public sealed class EventDispatcherTests : IAsyncLifetime
         Assert.True(elapsed < TimeSpan.FromMilliseconds(50), $"TryPublish took {elapsed.TotalMilliseconds:F1} ms while a handler was busy");
     }
 
+    [Fact]
+    public async Task Each_handler_receives_only_the_event_type_it_subscribed_to()
+    {
+        await StartAsync(s => s
+            .AddEventHandler<FileMutated, First>()
+            .AddEventHandler<FileRejected, Sibling>()
+            .AddEventHandler<BatchEvent, BaseListener>()
+            .AddEventHandler<BatchAborted, Sentinel>());
+
+        Publish(Mutated(1), Rejected(2), new BatchChunkCompleted(_batch, 3, DateTimeOffset.UnixEpoch, 1, 1, 1), Aborted(4));
+        await _probe.WaitForAsync(3);
+
+        // Sentinel is registered last, so no wrongly routed delivery can arrive after it. A handler that was
+        // called with the wrong type would fail at the cast, which shows up as a counted failure.
+        Assert.Equal(["First:1", "Sibling:2", "Sentinel:4"], _probe.Names());
+        Assert.Empty(_failedHandlers);
+    }
+
+    [Fact]
+    public async Task Every_matching_subscription_runs_for_each_event_in_registration_order()
+    {
+        await StartAsync(s => s
+            .AddEventHandler<FileMutated, First>()
+            .AddEventHandler<FileMutated, Second>()
+            .AddEventHandler<FileMutated, Third>());
+
+        Publish(Mutated(1), Mutated(2));
+        await _probe.WaitForAsync(6);
+
+        Assert.Equal(["First:1", "Second:1", "Third:1", "First:2", "Second:2", "Third:2"], _probe.Names());
+    }
+
+    [Fact]
+    public async Task One_handler_type_registered_for_five_event_types_is_one_instance_that_receives_all_five()
+    {
+        var host = await StartAsync(s => s
+            .AddEventHandler<FileMutated, Everything>()
+            .AddEventHandler<FileRejected, Everything>()
+            .AddEventHandler<BatchChunkCompleted, Everything>()
+            .AddEventHandler<BatchCompleted, Everything>()
+            .AddEventHandler<BatchAborted, Everything>());
+
+        Publish(Mutated(1), Rejected(2), new BatchChunkCompleted(_batch, 3, DateTimeOffset.UnixEpoch, 1, 1, 1), Completed(4), Aborted(5));
+        await _probe.WaitForAsync(5);
+
+        // GetServices resolves every registration of the type: two registrations would be two instances.
+        Assert.Single(host.Services.GetServices<Everything>());
+        Assert.Equal(1, _probe.Constructed);
+        Assert.Equal(["Everything:1", "Everything:2", "Everything:3", "Everything:4", "Everything:5"], _probe.Names());
+    }
+
+    [Fact]
+    public async Task Registering_handlers_repeatedly_starts_exactly_one_dispatcher()
+    {
+        var host = await StartAsync(s => s
+            .AddEventHandler<FileMutated, First>()
+            .AddEventHandler<FileRejected, Sibling>()
+            .AddEventHandler<BatchAborted, Sentinel>());
+
+        // The dispatcher is internal; it is the only hosted service in the Infrastructure assembly.
+        var dispatchers = host.Services.GetServices<IHostedService>()
+            .Where(service => service.GetType().Assembly == typeof(EventHandlerRegistration).Assembly);
+
+        Assert.Single(dispatchers);
+    }
+
+    [Fact]
+    public async Task Events_of_one_batch_reach_a_handler_in_sequence_order()
+    {
+        var otherBatch = BatchId.New();
+        await StartAsync(s => s.AddEventHandler<FileMutated, First>());
+
+        for (long sequence = 1; sequence <= 15; sequence++)
+        {
+            Publish(Mutated(sequence), Mutated(sequence, otherBatch));
+        }
+
+        await _probe.WaitForAsync(30);
+
+        var perBatch = _probe.Calls.GroupBy(call => call.Event.BatchId).ToList();
+        Assert.Equal(2, perBatch.Count);
+        Assert.All(perBatch, group => Assert.Equal(Enumerable.Range(1, 15).Select(n => (long)n), group.Select(call => call.Event.Sequence)));
+    }
+
+    [Fact]
+    public async Task Stopping_the_host_ends_the_dispatcher_cleanly_and_leaves_queued_events_unhandled()
+    {
+        var host = await StartAsync(s => s.AddEventHandler<FileMutated, Gated>());
+        Publish(Mutated(1), Mutated(2));
+        await _probe.WaitForAsync(1);
+
+        var dispatcher = host.Services.GetServices<IHostedService>().OfType<BackgroundService>().Single();
+
+        // Gated returns normally once the stop token fires, so only the loop itself can keep event 2 away.
+        await host.StopAsync().WaitAsync(Timeout);
+
+        Assert.Equal(["Gated:1"], _probe.Names());
+        Assert.True(dispatcher.ExecuteTask!.IsCompletedSuccessfully, $"The dispatcher ended {dispatcher.ExecuteTask.Status}, not cleanly");
+        Assert.DoesNotContain(_logs.Entries, entry => entry.Level >= LogLevel.Error);
+        Assert.Empty(_failedHandlers);
+    }
+
+    [Fact]
+    public async Task A_handler_cancelled_by_the_host_stopping_is_not_reported_as_a_failure()
+    {
+        var host = await StartAsync(s => s.AddEventHandler<FileMutated, Cancelling>());
+        Publish(Mutated(1));
+        await _probe.WaitForAsync(1);
+
+        await host.StopAsync().WaitAsync(Timeout);
+
+        // Cancelling throws OperationCanceledException from the stop token; that is the shutdown, not a fault.
+        Assert.DoesNotContain(_logs.Entries, entry => entry.Level >= LogLevel.Error);
+        Assert.Empty(_failedHandlers);
+    }
+
     private IHost Build(Action<IServiceCollection> register)
     {
         var builder = Host.CreateApplicationBuilder();
@@ -147,11 +263,23 @@ public sealed class EventDispatcherTests : IAsyncLifetime
     private BatchEvent Mutated(long sequence, BatchId? batch = null) =>
         new FileMutated(batch ?? _batch, sequence, DateTimeOffset.UnixEpoch, 0, "a.txt");
 
+    private BatchEvent Rejected(long sequence) =>
+        new FileRejected(_batch, sequence, DateTimeOffset.UnixEpoch, 0, "b.json", "UnsupportedFileExtension");
+
+    private BatchEvent Completed(long sequence) => new BatchCompleted(_batch, sequence, DateTimeOffset.UnixEpoch, 1, 0);
+
+    private BatchEvent Aborted(long sequence) => new BatchAborted(_batch, sequence, DateTimeOffset.UnixEpoch, 0, "Disposed");
+
     private sealed class Probe
     {
         private readonly SemaphoreSlim _handled = new(0);
+        private int _constructed;
 
         public ConcurrentQueue<(string Handler, BatchEvent Event)> Calls { get; } = new();
+
+        public int Constructed => Volatile.Read(ref _constructed);
+
+        public void Constructing() => Interlocked.Increment(ref _constructed);
 
         public string[] Names() => [.. Calls.Select(call => $"{call.Handler}:{call.Event.Sequence}")];
 
@@ -190,9 +318,34 @@ public sealed class EventDispatcherTests : IAsyncLifetime
         }
     }
 
+    private sealed class First(Probe probe) : IEventHandler<FileMutated>
+    {
+        public ValueTask HandleAsync(FileMutated e, CancellationToken ct) => probe.Record(nameof(First), e);
+    }
+
     private sealed class Second(Probe probe) : IEventHandler<FileMutated>
     {
         public ValueTask HandleAsync(FileMutated e, CancellationToken ct) => probe.Record(nameof(Second), e);
+    }
+
+    private sealed class Third(Probe probe) : IEventHandler<FileMutated>
+    {
+        public ValueTask HandleAsync(FileMutated e, CancellationToken ct) => probe.Record(nameof(Third), e);
+    }
+
+    private sealed class Sibling(Probe probe) : IEventHandler<FileRejected>
+    {
+        public ValueTask HandleAsync(FileRejected e, CancellationToken ct) => probe.Record(nameof(Sibling), e);
+    }
+
+    private sealed class Sentinel(Probe probe) : IEventHandler<BatchAborted>
+    {
+        public ValueTask HandleAsync(BatchAborted e, CancellationToken ct) => probe.Record(nameof(Sentinel), e);
+    }
+
+    private sealed class BaseListener(Probe probe) : IEventHandler<BatchEvent>
+    {
+        public ValueTask HandleAsync(BatchEvent e, CancellationToken ct) => probe.Record(nameof(BaseListener), e);
     }
 
     private sealed class Thrower : IEventHandler<FileMutated>
@@ -212,5 +365,49 @@ public sealed class EventDispatcherTests : IAsyncLifetime
             await probe.Record(nameof(Slow), e);
             await Task.Delay(TimeSpan.FromSeconds(5), ct);
         }
+    }
+
+    private sealed class Gated(Probe probe) : IEventHandler<FileMutated>
+    {
+        public async ValueTask HandleAsync(FileMutated e, CancellationToken ct)
+        {
+            await probe.Record(nameof(Gated), e);
+            var stopped = new TaskCompletionSource();
+            await using (ct.Register(() => stopped.TrySetResult()))
+            {
+                await stopped.Task;
+            }
+        }
+    }
+
+    private sealed class Cancelling(Probe probe) : IEventHandler<FileMutated>
+    {
+        public async ValueTask HandleAsync(FileMutated e, CancellationToken ct)
+        {
+            await probe.Record(nameof(Cancelling), e);
+            await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, ct);
+        }
+    }
+
+    private sealed class Everything : IEventHandler<FileMutated>, IEventHandler<FileRejected>,
+        IEventHandler<BatchChunkCompleted>, IEventHandler<BatchCompleted>, IEventHandler<BatchAborted>
+    {
+        private readonly Probe _probe;
+
+        public Everything(Probe probe)
+        {
+            _probe = probe;
+            probe.Constructing();
+        }
+
+        public ValueTask HandleAsync(FileMutated e, CancellationToken ct) => _probe.Record(nameof(Everything), e);
+
+        public ValueTask HandleAsync(FileRejected e, CancellationToken ct) => _probe.Record(nameof(Everything), e);
+
+        public ValueTask HandleAsync(BatchChunkCompleted e, CancellationToken ct) => _probe.Record(nameof(Everything), e);
+
+        public ValueTask HandleAsync(BatchCompleted e, CancellationToken ct) => _probe.Record(nameof(Everything), e);
+
+        public ValueTask HandleAsync(BatchAborted e, CancellationToken ct) => _probe.Record(nameof(Everything), e);
     }
 }
