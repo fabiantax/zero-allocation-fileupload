@@ -147,6 +147,8 @@ reasoning on a dedicated page: [docs/assumptions.md](docs/assumptions.md). In sh
 | Built-in OpenAPI plus Scalar | [Decision log](docs/decision-log.md#an-openapi-ui-without-swashbuckle) |
 | Test, architecture, coverage, and benchmark boundaries | [ADR 0007](docs/adr/0007-testing-strategy.md) |
 | No persistence and no repository port | [ADR 0008](docs/adr/0008-persistence-deferral.md) |
+| Bulk upload: streamed ZIP with a per-file manifest (v0.3, self-set) | [ADR 0011](docs/adr/0011-bulk-upload-contract.md) |
+| Batch events and the batch-status read model, still without a mediator (v0.3, self-set) | [ADR 0012](docs/adr/0012-batch-events-and-read-model.md) |
 
 ## Contributing
 
