@@ -21,5 +21,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FileMutation.Application\FileMutation.Application.csproj" />
+    <ProjectReference Include="..\FileMutation.TestCommon\FileMutation.TestCommon.csproj" />
   </ItemGroup>
 </Project>
