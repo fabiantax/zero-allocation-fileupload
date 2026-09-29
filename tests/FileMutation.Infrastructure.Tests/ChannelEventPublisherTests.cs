@@ -168,10 +168,13 @@ public sealed class ChannelEventPublisherTests : IDisposable
     [Fact]
     public void The_publisher_and_stream_registrations_share_one_queue()
     {
-        var (publisher, stream) = Build(capacity: 4);
+        var (publisher, _) = Build(capacity: 4);
+        var laterResolvedStream = _provider!.GetRequiredService<IEventStream>();
 
-        Assert.Same(publisher, _provider!.GetRequiredService<IEventPublisher>());
-        Assert.Same(stream, _provider!.GetRequiredService<IEventStream>());
+        Assert.True(publisher.TryPublish(Mutated(1)));
+
+        Assert.True(laterResolvedStream.Reader.TryRead(out var read));
+        Assert.Equal(1L, read.Sequence);
     }
 
     [Fact]
