@@ -1,5 +1,7 @@
 using FileMutation.Domain.Ports;
+using FileMutation.Infrastructure.Events;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace FileMutation.Infrastructure;
 
@@ -13,6 +15,13 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IRandomSequenceGenerator, CryptoRandomSequenceGenerator>();
         services.AddSingleton<IFileMutator, DateAndRandomSequenceMutator>();
+
+        // Singleton claim: the publisher's only state is a thread-safe channel and an Interlocked
+        // count, and its only dependency (the options instance) is itself a singleton.
+        services.TryAddSingleton<EventBusOptions>();
+        services.AddSingleton<ChannelEventPublisher>();
+        services.AddSingleton<IEventPublisher>(provider => provider.GetRequiredService<ChannelEventPublisher>());
+        services.AddSingleton<IEventStream>(provider => provider.GetRequiredService<ChannelEventPublisher>());
         return services;
     }
 }
