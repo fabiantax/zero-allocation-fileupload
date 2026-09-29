@@ -17,7 +17,7 @@ public sealed class BatchMutationSessionTests
     [Fact]
     public async Task Three_files_give_mutated_rejected_mutated_and_the_exact_event_sequence()
     {
-        var session = Start();
+        await using var session = Start();
         var contents = new List<string>();
         foreach (var (name, text) in new[] { ("a.txt", "one"), ("b.json", "two"), ("c.txt", "three") })
         {
@@ -32,6 +32,8 @@ public sealed class BatchMutationSessionTests
             }
         }
 
+        session.Complete();
+
         var id = session.Id;
         Assert.Equal(["one-mutated", "three-mutated"], contents);
         Assert.Equal<BatchFileOutcome>(
@@ -45,15 +47,35 @@ public sealed class BatchMutationSessionTests
             [
                 new FileMutated(id, 1, At, 0, "a.txt"),
                 new FileRejected(id, 2, At, 1, "b.json", "UnsupportedFileExtension"),
-                new FileMutated(id, 3, At, 2, "c.txt")
+                new FileMutated(id, 3, At, 2, "c.txt"),
+                new BatchChunkCompleted(id, 4, At, 1, 3, 3),
+                new BatchCompleted(id, 5, At, 2, 1)
             ],
             _published.Events);
     }
 
     [Fact]
+    public async Task Chunk_size_two_with_five_files_publishes_three_chunks_before_the_batch_completes()
+    {
+        await using var session = Start(chunkSize: 2);
+        foreach (var name in new[] { "a.txt", "b.txt", "c.txt", "d.txt", "e.txt" })
+        {
+            await SendAsync(session, name);
+        }
+
+        session.Complete();
+
+        var id = session.Id;
+        Assert.Equal<BatchChunkCompleted>(
+            [new(id, 3, At, 1, 2, 2), new(id, 6, At, 2, 2, 4), new(id, 8, At, 3, 1, 5)],
+            _published.Events.OfType<BatchChunkCompleted>());
+        Assert.Equal(new BatchCompleted(id, 9, At, 5, 0), _published.Events[^1]);
+    }
+
+    [Fact]
     public async Task Duplicate_entry_names_are_numbered_ignoring_case_and_never_issued_twice()
     {
-        var session = Start();
+        await using var session = Start();
         var entryNames = new List<string?>();
         foreach (var name in new[] { "a.txt", "a.txt", "A.TXT", "a (2).txt" })
         {
@@ -67,7 +89,7 @@ public sealed class BatchMutationSessionTests
     [Fact]
     public async Task The_file_after_max_files_is_rejected_without_its_content_being_read()
     {
-        var session = Start(maxFiles: 2);
+        await using var session = Start(maxFiles: 2);
         await SendAsync(session, "a.txt");
         await SendAsync(session, "b.txt");
         var overflow = new TrapStream();
@@ -85,7 +107,7 @@ public sealed class BatchMutationSessionTests
     public async Task A_mutation_that_throws_on_file_two_is_a_rejected_row_and_files_one_and_three_succeed(bool serviceThrows)
     {
         var single = new SingleFileMutationService(new SuffixMutator(failOnCall: serviceThrows ? 0 : 2));
-        var session = Start(serviceThrows ? new ThrowOnSecondCall(single) : single);
+        await using var session = Start(serviceThrows ? new ThrowOnSecondCall(single) : single);
 
         var outcomes = new List<BatchFileOutcome>();
         foreach (var name in new[] { "a.txt", "b.txt", "c.txt" })
@@ -104,12 +126,55 @@ public sealed class BatchMutationSessionTests
     public async Task Cancellation_propagates_instead_of_becoming_a_rejected_row()
     {
         var files = new ThrowOnSecondCall(new SingleFileMutationService(new SuffixMutator()), new OperationCanceledException());
-        var session = Start(files);
+        await using var session = Start(files);
         await SendAsync(session, "a.txt");
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => SendAsync(session, "b.txt"));
 
         Assert.Single(session.Outcomes);
+    }
+
+    [Fact]
+    public async Task Disposing_without_complete_or_abort_publishes_exactly_one_aborted_event()
+    {
+        var session = Start();
+        await SendAsync(session, "a.txt");
+
+        await session.DisposeAsync();
+        await session.DisposeAsync();
+
+        Assert.Equal(new BatchAborted(session.Id, 2, At, 1, "Disposed"), Assert.Single(_published.Events, e => e.IsTerminal));
+    }
+
+    [Fact]
+    public async Task Abort_and_dispose_after_complete_publish_nothing_more()
+    {
+        var session = Start();
+        await SendAsync(session, "a.txt");
+        session.Complete();
+        var published = _published.Events.ToArray();
+
+        session.Complete();
+        session.Abort("ClientDisconnected");
+        await session.DisposeAsync();
+
+        Assert.Equal(published, _published.Events);
+        Assert.IsType<BatchCompleted>(Assert.Single(published, e => e.IsTerminal));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => SendAsync(session, "b.txt"));
+    }
+
+    [Fact]
+    public async Task Abort_publishes_once_with_the_files_processed()
+    {
+        await using var session = Start();
+        await SendAsync(session, "a.txt");
+
+        session.Abort("ClientDisconnected");
+        session.Abort("Other");
+        session.Complete();
+
+        Assert.Equal(new BatchAborted(session.Id, 2, At, 1, "ClientDisconnected"), _published.Events[^1]);
+        Assert.Equal(2, _published.Events.Count);
     }
 
     [Theory]
@@ -118,21 +183,23 @@ public sealed class BatchMutationSessionTests
     public async Task Sequence_numbers_run_from_one_without_gaps_even_when_the_publisher_drops_events(bool accepted)
     {
         var publisher = new RecordingPublisher(accepted);
-        var session = Start(publisher: publisher);
+        await using var session = Start(chunkSize: 2, publisher: publisher);
         foreach (var name in new[] { "a.txt", "b.json", "c.txt", "d.txt", "e.txt" })
         {
             await SendAsync(session, name);
         }
 
-        Assert.Equal(Enumerable.Range(1, 5).Select(n => (long)n), publisher.Events.Select(e => e.Sequence));
+        session.Complete();
+
+        Assert.Equal(Enumerable.Range(1, 9).Select(n => (long)n), publisher.Events.Select(e => e.Sequence));
         Assert.All(publisher.Events, e => Assert.Equal(session.Id, e.BatchId));
     }
 
     [Fact]
     public async Task Start_publishes_nothing_and_each_session_has_its_own_id_and_sequence()
     {
-        var first = Start();
-        var second = Start();
+        await using var first = Start();
+        await using var second = Start();
         Assert.Empty(_published.Events);
 
         await SendAsync(first, "a.txt");
@@ -159,6 +226,7 @@ public sealed class BatchMutationSessionTests
 
     [Theory]
     [InlineData(0, 10)]
+    [InlineData(1024, 0)]
     public void Start_rejects_limits_that_would_break_the_session(long maxFileBytes, int chunkSize) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => Start(limits: new BatchLimits(5, maxFileBytes, chunkSize)));
 
