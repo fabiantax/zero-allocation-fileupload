@@ -226,10 +226,16 @@ public sealed class BatchStatusOptions   // IOptions-bindable
 /// <summary>Capacity of the non-terminal part of the event queue.</summary>
 public sealed class EventBusOptions { public int Capacity { get; set; } = 1_024; }
 
-// story 001: internal sealed class ChannelEventPublisher : IEventPublisher
+// story 001: internal sealed class ChannelEventPublisher : IEventPublisher, IEventStream
 //   one unbounded Channel<BatchEvent> (single FIFO keeps per-batch order) plus an
 //   Interlocked count of queued non-terminal events; at Capacity a non-terminal event is
-//   dropped and counted, a terminal event is always written.
+//   dropped and counted, a terminal event is always written. Reading a non-terminal event
+//   frees a slot. One instance serves both registrations.
+
+/// <summary>The consuming side of the event queue. Public so tests resolve it through
+/// AddFileMutationInfrastructure() instead of InternalsVisibleTo (same precedent as Program);
+/// the adapter behind it stays internal.</summary>
+public interface IEventStream { ChannelReader<BatchEvent> Reader { get; } }
 
 // story 003:
 public static class EventHandlerRegistration
