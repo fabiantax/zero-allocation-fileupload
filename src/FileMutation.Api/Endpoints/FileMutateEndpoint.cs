@@ -1,6 +1,6 @@
 using FileMutation.Application;
 using FileMutation.Api.Contracts;
-using Microsoft.AspNetCore.WebUtilities;
+using FileMutation.Api.Multipart;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 
@@ -52,7 +52,7 @@ internal static class FileMutateEndpoint
             return Problem(StatusCodes.Status413PayloadTooLarge, "The upload exceeds the configured size limit.");
         }
 
-        if (!TryGetBoundary(request.ContentType, out var boundary))
+        if (!MultipartFileParts.TryGetBoundary(request.ContentType, out var boundary))
         {
             return Problem(StatusCodes.Status400BadRequest, "The request must be multipart/form-data.");
         }
@@ -62,15 +62,10 @@ internal static class FileMutateEndpoint
         {
             try
             {
-                var multipart = new MultipartReader(boundary, request.Body);
                 var fileParts = 0;
-                while (await multipart.ReadNextSectionAsync(cancellationToken) is { } section)
+                await foreach (var part in MultipartFileParts.ReadAsync(
+                    request.Body, boundary, MutateFileRequest.FileFieldName, cancellationToken))
                 {
-                    if (!TryGetFileMetadata(section, out var fileName, out var contentType))
-                    {
-                        continue; // Non-file parts are ignored rather than rejected.
-                    }
-
                     if (++fileParts > 1)
                     {
                         return Problem(
@@ -80,7 +75,7 @@ internal static class FileMutateEndpoint
                     await DisposeResultAsync(mutationResult);
 
                     mutationResult = await fileMutationService.MutateAsync(
-                        section.Body, fileName, contentType, limits.MaxFileBytes, cancellationToken);
+                        part.Body, part.FileName, part.ContentType, limits.MaxFileBytes, cancellationToken);
                 }
             }
             catch (InvalidDataException)
@@ -156,37 +151,6 @@ internal static class FileMutateEndpoint
             => "Only text/plain content is accepted.",
         _ => "The uploaded file is not valid UTF-8 text."
     };
-
-    private static bool TryGetBoundary(string? contentType, out string boundary)
-    {
-        boundary = string.Empty;
-        if (!MediaTypeHeaderValue.TryParse(contentType, out var mediaType) ||
-            !string.Equals(mediaType.MediaType.Value, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        boundary = HeaderUtilities.RemoveQuotes(mediaType.Boundary).Value ?? string.Empty;
-        return !string.IsNullOrWhiteSpace(boundary);
-    }
-
-    private static bool TryGetFileMetadata(MultipartSection section, out string? fileName, out string? contentType)
-    {
-        fileName = null;
-        contentType = null;
-
-        if (!ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition) ||
-            !string.Equals(disposition.DispositionType.Value, "form-data", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(disposition.Name.Value, MutateFileRequest.FileFieldName, StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(disposition.FileNameStar.Value ?? disposition.FileName.Value))
-        {
-            return false;
-        }
-
-        fileName = HeaderUtilities.RemoveQuotes(disposition.FileNameStar.Value ?? disposition.FileName.Value).Value;
-        contentType = section.ContentType;
-        return true;
-    }
 
     private static IResult Problem(int statusCode, string detail) =>
         TypedResults.Problem(statusCode: statusCode, detail: detail);
