@@ -20,6 +20,11 @@ below are the documentation to copy, not suggestions.
 - Failure reason names (`FileMutationFailureReason`, `FileRejectionReason`) live in
   Application; Domain cannot reference them. Events and manifest rows carry the enum member
   **name** as `ReasonCode`, produced in Application with `nameof`-safe `ToString()`.
+- Api types that `FileMutation.Api.Tests` unit-tests directly are `public`, with a one-line
+  comment saying why (same precedent as `Program`). The repo forbids `InternalsVisibleTo`
+  (`dotnet-conventions.md`), and reaching an `internal` type through reflection turns a rename
+  into a runtime test failure instead of a compile error. Infrastructure adapters stay
+  `internal` and are tested through `AddFileMutationInfrastructure()`, as that rule says.
 - The single-file path (`IFileMutator`, `ISingleFileMutationService`, `POST /files/mutate`)
   does not change. `IFileMutator` backs the published 784-792 B per-operation benchmark.
 
@@ -246,24 +251,24 @@ public static class EventHandlerRegistration
 
 ```csharp
 // story 002, src/FileMutation.Api/Multipart/MultipartFileParts.cs
-internal readonly record struct MultipartFilePart(Stream Body, string FileName, string? ContentType);
+public readonly record struct MultipartFilePart(Stream Body, string FileName, string? ContentType);
 
-internal static class MultipartFileParts
+public static class MultipartFileParts
 {
-    internal static bool TryGetBoundary(string? contentType, out string boundary);
+    public static bool TryGetBoundary(string? contentType, out string boundary);
 
     /// Yields form-data parts named fieldName that carry a file name; skips the rest.
     /// InvalidDataException / IOException propagate to the caller unchanged.
-    internal static IAsyncEnumerable<MultipartFilePart> ReadAsync(
+    public static IAsyncEnumerable<MultipartFilePart> ReadAsync(
         Stream body, string boundary, string fieldName, CancellationToken cancellationToken);
 }
 
 // story 005, src/FileMutation.Api/Batches/ZipBatchResponseWriter.cs
-internal sealed class ZipBatchResponseWriter : IAsyncDisposable
+public sealed class ZipBatchResponseWriter : IAsyncDisposable
 {
-    internal static ValueTask<ZipBatchResponseWriter> CreateAsync(Stream responseBody, CancellationToken ct);
-    internal ValueTask WriteEntryAsync(string entryName, Stream content, CancellationToken ct);
-    internal ValueTask WriteManifestAsync(BatchId id, IReadOnlyList<BatchFileOutcome> outcomes,
+    public static ValueTask<ZipBatchResponseWriter> CreateAsync(Stream responseBody, CancellationToken ct);
+    public ValueTask WriteEntryAsync(string entryName, Stream content, CancellationToken ct);
+    public ValueTask WriteManifestAsync(BatchId id, IReadOnlyList<BatchFileOutcome> outcomes,
         bool complete, CancellationToken ct);    // always the last entry, "manifest.json"
     public ValueTask DisposeAsync();              // central directory written asynchronously
 }
