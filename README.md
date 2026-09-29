@@ -114,9 +114,18 @@ Container*, or use the **Open in Codespaces** button. The dev container uses the
 dotnet test
 ```
 
-CI additionally gates **branch** coverage at 80%, enforces XML documentation on public members,
-and runs the [allocation benchmarks](docs/benchmarks/allocation-results.md) outside the coverage
-run. The boundaries between these suites and their trade-offs are recorded in
+CI additionally gates **branch** coverage at 80% and enforces XML documentation on public
+members. CI does not run the allocation benchmarks, so an allocation regression is not caught
+automatically. They are run manually from the repository root:
+
+```bash
+dotnet run -c Release --project benchmarks/FileMutation.Benchmarks
+```
+
+[The allocation benchmark results](docs/benchmarks/allocation-results.md) record this command as
+run, prefixed with two NuGet cache environment variables specific to that machine, together with
+the host and runtime report. The published figures are per operation (the mutation step), not per
+request. The boundaries between these suites and their trade-offs are recorded in
 [ADR 0007](docs/adr/0007-testing-strategy.md).
 
 ## Assumptions and open questions
