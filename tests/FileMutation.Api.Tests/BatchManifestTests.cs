@@ -13,7 +13,7 @@ namespace FileMutation.Api.Tests;
 /// </summary>
 public sealed class BatchManifestTests
 {
-    private static readonly BatchId Id = ParseId("3f9c00112233445566778899aabbccdd");
+    private static readonly BatchId Id = BatchId.New();
 
     private static readonly BatchFileOutcome[] Rows =
     [
@@ -25,8 +25,8 @@ public sealed class BatchManifestTests
     [Fact]
     public void The_manifest_serializes_to_exactly_the_contract_json()
     {
-        const string expected =
-            """{"batchId":"3f9c00112233445566778899aabbccdd","complete":true,"mutated":2,"rejected":1,"files":[""" +
+        var expected =
+            $$"""{"batchId":"{{Id.Value}}","complete":true,"mutated":2,"rejected":1,"files":[""" +
             """{"index":0,"declaredFileName":"a.txt","entryName":"a.txt","status":"mutated","reasonCode":null},""" +
             """{"index":1,"declaredFileName":"a.txt","entryName":"a (2).txt","status":"mutated","reasonCode":null},""" +
             """{"index":2,"declaredFileName":"b.json","entryName":null,"status":"rejected","reasonCode":"UnsupportedFileExtension"}]}""";
@@ -95,10 +95,4 @@ public sealed class BatchManifestTests
     private static JsonNode Parse(bool complete, BatchFileOutcome[] rows) => JsonNode.Parse(Serialize(complete, rows))!;
 
     private static string[] Names(JsonNode node) => node.AsObject().Select(property => property.Key).ToArray();
-
-    private static BatchId ParseId(string text)
-    {
-        Assert.True(BatchId.TryParse(text, out var id));
-        return id;
-    }
 }
