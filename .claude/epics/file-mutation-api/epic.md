@@ -107,7 +107,7 @@ Test projects are named `{project}.Tests` so `*.Tests` greps cleanly and each su
 
 - GitHub Actions: `dotnet build` + `dotnet test` + branch-coverage gate on every PR; existing `pr-title-check.yml` enforces issue traceability.
 - Branch protection on `main` with those checks required (applied once, out of band).
-- Coverage via `coverlet.collector` → `ReportGenerator`; benchmarks run in a dedicated job, not the coverage-gated suite.
+- Coverage via `coverlet.collector` → `ReportGenerator`; benchmarks run manually outside the coverage-gated suite; CI does not run them (ADR 0007).
 
 ## Implementation Strategy
 
