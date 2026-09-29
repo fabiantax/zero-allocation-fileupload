@@ -244,9 +244,10 @@ public static class EventHandlerRegistration
     /// event type it subscribes to) and subscribes it to TEvent. No reflection, no assembly
     /// scanning: each call closes one generic registration at compile time. The first call also
     /// registers the dispatcher hosted service (TryAddEnumerable).</summary>
-    public static IServiceCollection AddEventHandler<TEvent, THandler>(this IServiceCollection services)
+    public static IServiceCollection AddEventHandler<TEvent, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] THandler>(this IServiceCollection services)
         where TEvent : BatchEvent
         where THandler : class, IEventHandler<TEvent>;
+    // THandler carries [DynamicallyAccessedMembers(PublicConstructors)] (TryAddSingleton<THandler> raises IL2091 without it); matching is by exact runtime type.
 }
 // internal sealed class EventDispatcherService : BackgroundService
 //   reads the channel; for each event invokes every matching registration inside its own
