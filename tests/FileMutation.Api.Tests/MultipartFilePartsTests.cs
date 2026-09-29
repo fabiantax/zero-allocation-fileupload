@@ -1,19 +1,16 @@
-using System.Reflection;
 using System.Text;
+using FileMutation.Api.Multipart;
 using Xunit;
 
 namespace FileMutation.Api.Tests;
 
 /// <summary>
-/// Tests for the internal multipart reader. The Api assembly exposes no internals to tests (no
-/// <c>InternalsVisibleTo</c>, by rule), so the type is reached by reflection; the contract under
-/// test is the signature in <c>contracts.md</c>.
+/// Tests for the multipart file-part reader. <see cref="MultipartFileParts"/> is public so these
+/// tests call it directly, with no reflection and no <c>InternalsVisibleTo</c>.
 /// </summary>
 public sealed class MultipartFilePartsTests
 {
     private const string Boundary = "test-boundary";
-
-    private static readonly Type Parts = typeof(Program).Assembly.GetType("FileMutation.Api.Multipart.MultipartFileParts")!;
 
     private sealed record Part(string FileName, string? ContentType, string Body);
 
@@ -28,14 +25,12 @@ public sealed class MultipartFilePartsTests
     [InlineData(null, false, "")]
     public void TryGetBoundary_accepts_only_form_data_with_a_boundary(string? contentType, bool expected, string boundary)
     {
-        var args = new object?[] { contentType, null };
-
-        var result = (bool)Parts.GetMethod("TryGetBoundary", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, args)!;
+        var result = MultipartFileParts.TryGetBoundary(contentType, out var actualBoundary);
 
         Assert.Equal(expected, result);
         if (expected)
         {
-            Assert.Equal(boundary, args[1]);
+            Assert.Equal(boundary, actualBoundary);
         }
     }
 
@@ -131,33 +126,11 @@ public sealed class MultipartFilePartsTests
 
     private static async Task<List<Part>> ReadAllAsync(Stream body, string fieldName)
     {
-        var read = Parts.GetMethod("ReadAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var enumerable = read.Invoke(null, [body, Boundary, fieldName, CancellationToken.None])!;
-        var enumerableType = enumerable.GetType().GetInterfaces()
-            .Single(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
-        var enumerator = enumerableType.GetMethod("GetAsyncEnumerator")!.Invoke(enumerable, [CancellationToken.None])!;
-        var enumeratorType = enumerator.GetType().GetInterfaces()
-            .Single(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerator<>));
-        var moveNext = enumeratorType.GetMethod("MoveNextAsync")!;
-        var current = enumeratorType.GetProperty("Current")!;
         var parts = new List<Part>();
-        try
+        await foreach (var part in MultipartFileParts.ReadAsync(body, Boundary, fieldName, CancellationToken.None))
         {
-            while (await (ValueTask<bool>)moveNext.Invoke(enumerator, null)!)
-            {
-                var value = current.GetValue(enumerator)!;
-                var type = value.GetType();
-                var stream = (Stream)type.GetProperty("Body")!.GetValue(value)!;
-                using var reader = new StreamReader(stream, Encoding.UTF8);
-                parts.Add(new Part(
-                    (string)type.GetProperty("FileName")!.GetValue(value)!,
-                    (string?)type.GetProperty("ContentType")!.GetValue(value),
-                    await reader.ReadToEndAsync()));
-            }
-        }
-        finally
-        {
-            await ((IAsyncDisposable)enumerator).DisposeAsync();
+            using var reader = new StreamReader(part.Body, Encoding.UTF8);
+            parts.Add(new Part(part.FileName, part.ContentType, await reader.ReadToEndAsync()));
         }
 
         return parts;
