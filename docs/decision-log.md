@@ -124,6 +124,18 @@ remains a direct, constructor-injected file-processing service rather than a dis
 (`4516930`) removed dispatch and established the two-phase order that corrected the allocation
 claim.
 
+### Batch events without a mediator (v0.3)
+
+When I added bulk upload and batch events as a self-set extension, I re-ran ADR-0002's own
+test instead of treating events as a reason to adopt a mediator. Three use cases (mutate one
+file, mutate a batch, read batch status) and one shared concern (logging and timing) sit below
+the line of three use cases and two concerns, so endpoints still call their services directly.
+Events clear the other test in that addendum: a real listener exists, the batch-status read
+model, so a write side that records events and a read side built from them is CQRS without a
+dispatcher. I considered an in-band handler call, MediatR notifications, and a durable outbox;
+respectively, they couple upload latency to handler speed, reopen the licence question, and need
+storage that ADR-0008 rules out. The contract is in ADR-0011 and the event model in ADR-0012.
+
 ### Native seams
 
 I chose `TimeProvider`, `Guid.CreateVersion7()`, built-in ProblemDetails, and
