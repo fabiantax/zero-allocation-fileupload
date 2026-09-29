@@ -1,4 +1,4 @@
-using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using FileMutation.Application.Batches;
 using FileMutation.Domain.Batches;
@@ -143,14 +143,18 @@ public sealed class BatchMutationSessionTests
     }
 
     [Fact]
-    public void The_session_holds_outcome_rows_and_never_a_stream_or_a_result()
+    public async Task The_session_keeps_neither_the_upload_nor_the_result_once_the_caller_disposes_it()
     {
-        var held = typeof(BatchMutationSession)
-            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
-            .SelectMany(field => field.FieldType.GetGenericArguments().Append(field.FieldType))
-            .Where(type => typeof(Stream).IsAssignableFrom(type) || type == typeof(BatchFileResult) || type == typeof(FileMutationResult));
+        var session = Start();
+        var (upload, result) = await SendAndForgetAsync(session);
 
-        Assert.Empty(held);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.False(upload.IsAlive, "the session still references the uploaded stream");
+        Assert.False(result.IsAlive, "the session still references a disposed result");
+        Assert.Single(session.Outcomes);
     }
 
     [Theory]
@@ -159,6 +163,16 @@ public sealed class BatchMutationSessionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Start(limits: new BatchLimits(5, maxFileBytes, chunkSize)));
 
     private static MemoryStream Bytes(string text) => new(Encoding.UTF8.GetBytes(text));
+
+    // Not inlined, so the upload and the result are unreachable from the test once it returns.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<(WeakReference Upload, WeakReference Result)> SendAndForgetAsync(BatchMutationSession session)
+    {
+        var upload = Bytes("x");
+        var result = await session.MutateNextAsync(upload, "a.txt", "text/plain", default);
+        await result.DisposeAsync();
+        return (new WeakReference(upload), new WeakReference(result));
+    }
 
     private static async Task<BatchFileOutcome> SendAsync(BatchMutationSession session, string name)
     {
