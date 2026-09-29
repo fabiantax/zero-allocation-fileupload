@@ -16,7 +16,7 @@ namespace FileMutation.Api.Tests;
 /// </summary>
 public sealed class ZipBatchResponseWriterTests
 {
-    private static readonly BatchId Id = ParseId("3f9c00112233445566778899aabbccdd");
+    private static readonly BatchId Id = BatchId.New();
 
     private static readonly BatchFileOutcome[] Rejection =
         [new(0, "b.json", null, BatchFileStatus.Rejected, "UnsupportedFileExtension")];
@@ -223,12 +223,6 @@ public sealed class ZipBatchResponseWriterTests
     }
 
     private static MemoryStream Utf8(string text) => new(Encoding.UTF8.GetBytes(text));
-
-    private static BatchId ParseId(string text)
-    {
-        Assert.True(BatchId.TryParse(text, out var id));
-        return id;
-    }
 
     /// <summary>
     /// A write-only, non-seekable stream that throws on any synchronous write, flush or dispose, as a Kestrel
