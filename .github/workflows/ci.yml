@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every pull request, whatever its base: the PR-size rule asks for stacked PRs, whose base is
+  # the branch below them, and a base filter here would leave them with no build or test (#128).
   pull_request:
-    branches: [main]
 
 jobs:
   build-and-test:
